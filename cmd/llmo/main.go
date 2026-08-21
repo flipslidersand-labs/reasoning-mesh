@@ -38,6 +38,8 @@ func main() {
 		runEval(cfg, os.Args[2:])
 	case "bench":
 		runBench(os.Args[2:])
+	case "ingest":
+		runIngest(cfg, os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		printUsage()
@@ -50,6 +52,7 @@ func printUsage() {
 	fmt.Println("Commands:")
 	fmt.Println("  eval    Run eval harness against test cases")
 	fmt.Println("  bench   Show longitudinal benchmark across result files")
+	fmt.Println("  ingest  Manually ingest a knowledge entry into Qdrant")
 }
 
 func runEval(cfg *config.Config, args []string) {
@@ -151,6 +154,56 @@ func resolveConditions(flag string) []eval.Condition {
 		conds = append(conds, eval.Condition(s))
 	}
 	return conds
+}
+
+func runIngest(cfg *config.Config, args []string) {
+	fs := flag.NewFlagSet("ingest", flag.ExitOnError)
+	contentFlag := fs.String("content", "", "knowledge text to ingest")
+	fileFlag := fs.String("file", "", "read content from file (overrides -content)")
+	taskType := fs.String("task-type", "implementation", "task type: debugging|implementation|architecture|testing")
+	language := fs.String("language", "", "programming language (e.g. go, rust)")
+	framework := fs.String("framework", "", "framework name (e.g. gin, actix)")
+	tagsFlag := fs.String("tags", "", "comma-separated tags")
+	_ = fs.Parse(args)
+
+	content := *contentFlag
+	if *fileFlag != "" {
+		data, err := os.ReadFile(*fileFlag)
+		if err != nil {
+			log.Fatalf("read file: %v", err)
+		}
+		content = string(data)
+	}
+	if content == "" {
+		fmt.Fprintln(os.Stderr, "error: -content or -file is required")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+
+	qc := qdrant.New(cfg.Qdrant.Endpoint)
+	if err := qc.Ping(ctx); err != nil {
+		log.Fatalf("qdrant unreachable: %v", err)
+	}
+
+	emb := knowledge.NewEmbedder(cfg.Embedder.Endpoint)
+	col := cfg.Qdrant.Collections["knowledge"]
+	store := knowledge.NewIngestStore(emb, qc, col)
+
+	entry := knowledge.IngestEntry{
+		Content:   content,
+		TaskType:  eval.TaskType(*taskType),
+		Language:  *language,
+		Framework: *framework,
+		Tags:      splitComma(*tagsFlag),
+	}
+
+	id, err := store.Ingest(ctx, entry)
+	if err != nil {
+		log.Fatalf("ingest: %v", err)
+	}
+	fmt.Printf("ingested: %s\n", id)
 }
 
 func runBench(args []string) {
