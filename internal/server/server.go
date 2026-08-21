@@ -17,7 +17,8 @@ type Config struct {
 	ScoreUpdater *knowledge.ScoreUpdater
 	Retriever    InferRetriever
 	Pending      *PendingStore // if nil, a new store is created
-	BearerToken  string        // if non-empty, all endpoints require Authorization: Bearer <token>
+	Health       HealthConfig  // Ollama + Qdrant pingers for GET /v1/health
+	BearerToken  string        // if non-empty, all non-health endpoints require Authorization: Bearer <token>
 }
 
 // Build constructs the HTTP mux with all registered routes.
@@ -29,7 +30,13 @@ func Build(cfg Config) http.Handler {
 		pending = NewPendingStore()
 	}
 
-	// Health
+	// GET /v1/health — Ollama + Qdrant ping (exempt from auth)
+	mux.Handle("/v1/health", &healthHandler{cfg: cfg.Health})
+
+	// POST /v1/route — keyword-based task routing
+	mux.Handle("/v1/route", &routeHandler{router: cfg.Router})
+
+	// Legacy health alias
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"status":"ok"}`)
@@ -62,14 +69,13 @@ func Addr(host string, port int) string {
 
 func bearerAuth(token string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// /healthz is exempt from auth
-		if r.URL.Path == "/healthz" {
+		// /v1/health and /healthz are exempt from auth
+		if r.URL.Path == "/v1/health" || r.URL.Path == "/healthz" {
 			next.ServeHTTP(w, r)
 			return
 		}
 		auth := r.Header.Get("Authorization")
-		expected := "Bearer " + token
-		if auth != expected {
+		if auth != "Bearer "+token {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

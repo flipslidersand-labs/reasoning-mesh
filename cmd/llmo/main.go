@@ -42,8 +42,8 @@ func main() {
 		runEval(cfg, os.Args[2:])
 	case "bench":
 		runBench(os.Args[2:])
-	case "ingest":
-		runIngest(cfg, os.Args[2:])
+	case "ingest-local":
+		runIngestLocal(cfg, os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		printUsage()
@@ -57,8 +57,8 @@ func printUsage() {
 	fmt.Println("  ask     Send a task to the llmo server and print the response")
 	fmt.Println("  ingest  Ingest a git commit or file into the knowledge base")
 	fmt.Println("  eval    Run eval harness against test cases")
-	fmt.Println("  bench   Show longitudinal benchmark across result files")
-	fmt.Println("  ingest  Manually ingest a knowledge entry into Qdrant")
+	fmt.Println("  bench         Show longitudinal benchmark across result files")
+	fmt.Println("  ingest-local  Directly ingest a knowledge entry into Qdrant")
 }
 
 func runEval(cfg *config.Config, args []string) {
@@ -162,7 +162,7 @@ func resolveConditions(flag string) []eval.Condition {
 	return conds
 }
 
-func runIngest(cfg *config.Config, args []string) {
+func runIngestLocal(cfg *config.Config, args []string) {
 	fs := flag.NewFlagSet("ingest", flag.ExitOnError)
 	contentFlag := fs.String("content", "", "knowledge text to ingest")
 	fileFlag := fs.String("file", "", "read content from file (overrides -content)")
