@@ -1,0 +1,22 @@
+id: debug-rust-001
+task_type: debugging
+prompt: |
+  以下のRustコードでコンパイルエラーが出ます。原因と修正方法を教えてください。
+context:
+  language: rust
+  framework: ""
+  snippet: |
+    fn longest<'a>(x: &str, y: &str) -> &'a str {
+        if x.len() > y.len() { x } else { y }
+    }
+
+    // エラー:
+    // error[E0623]: lifetime mismatch
+    // note: ...but data from `x` is returned here
+expected:
+  root_cause: ライフタイム注釈が不正 — x と y の参照ライフタイムを 'a に束縛しないと戻り値のライフタイムが保証できない
+  required_keywords:
+    - lifetime
+    - "'a"
+    - borrow
+    - 参照

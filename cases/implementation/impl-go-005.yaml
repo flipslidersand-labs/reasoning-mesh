@@ -1,0 +1,17 @@
+id: impl-go-005
+task_type: implementation
+prompt: |
+  Goでファイルの行をストリーミングで読み込みながら処理する関数を実装してください。
+  - メモリ効率を考慮（大ファイル対応）
+  - context によるキャンセル対応
+  - 各行にコールバック関数を適用
+context:
+  language: go
+  framework: ""
+expected:
+  required_keywords:
+    - bufio.Scanner
+    - streaming
+    - callback
+    - context
+    - メモリ

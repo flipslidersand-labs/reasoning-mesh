@@ -1,0 +1,18 @@
+id: arch-go-004
+task_type: architecture
+prompt: |
+  GoでHTTPエラーレスポンスを一貫して返す仕組みを設計してください。
+  - 4xx/5xx の分類
+  - エラーコードとメッセージの構造
+  - ロギングとの連携
+  - センシティブ情報の漏洩防止
+context:
+  language: go
+  framework: chi
+expected:
+  required_keywords:
+    - error response
+    - status code
+    - logging
+    - sensitive
+    - consistent

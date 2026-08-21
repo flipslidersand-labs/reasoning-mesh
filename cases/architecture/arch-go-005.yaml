@@ -1,0 +1,16 @@
+id: arch-go-005
+task_type: architecture
+prompt: |
+  GoのバックエンドAPIでレート制限を実装するとき、インメモリ方式とRedis方式のどちらを選ぶべきか、
+  判断基準とトレードオフを説明してください。
+context:
+  language: go
+  framework: ""
+expected:
+  required_keywords:
+    - rate limit
+    - in-memory
+    - Redis
+    - distributed
+    - single instance
+    - トレードオフ

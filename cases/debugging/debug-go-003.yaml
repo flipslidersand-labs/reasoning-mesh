@@ -1,0 +1,35 @@
+id: debug-go-003
+task_type: debugging
+prompt: |
+  以下のGoコードでgoroutineリークが発生しています。原因と修正方法を教えてください。
+context:
+  language: go
+  framework: ""
+  snippet: |
+    func fetchAll(urls []string) []string {
+        results := make(chan string)
+        for _, url := range urls {
+            go func(u string) {
+                resp, err := http.Get(u)
+                if err != nil {
+                    return  // channelに送らずreturn
+                }
+                defer resp.Body.Close()
+                body, _ := io.ReadAll(resp.Body)
+                results <- string(body)
+            }(url)
+        }
+
+        var out []string
+        for range urls {
+            out = append(out, <-results)
+        }
+        return out
+    }
+expected:
+  root_cause: goroutineリーク — エラー時に channel に送信せず return するため、受信側が永久にブロックする
+  required_keywords:
+    - goroutine leak
+    - channel
+    - context
+    - エラー

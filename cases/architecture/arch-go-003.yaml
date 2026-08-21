@@ -1,0 +1,15 @@
+id: arch-go-003
+task_type: architecture
+prompt: |
+  GoのAPIサーバーで設定管理をどう設計すべきか説明してください。
+  環境変数・設定ファイル・デフォルト値の優先順位と、テスタビリティを両立する方法を含めてください。
+context:
+  language: go
+  framework: ""
+expected:
+  required_keywords:
+    - 環境変数
+    - config
+    - priority
+    - testable
+    - interface

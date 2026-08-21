@@ -1,0 +1,17 @@
+id: impl-go-002
+task_type: implementation
+prompt: |
+  Goでスレッドセーフなキャッシュを実装してください。
+  - TTL（有効期限）対応
+  - Get / Set / Delete メソッド
+  - 期限切れエントリの自動削除
+context:
+  language: go
+  framework: ""
+expected:
+  required_keywords:
+    - sync.RWMutex
+    - TTL
+    - expiry
+    - goroutine
+    - ticker

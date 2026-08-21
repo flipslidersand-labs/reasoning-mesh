@@ -1,0 +1,13 @@
+# Eval Test Case Schema
+# ---
+# id:          string  — 一意な識別子 (例: debug-go-001)
+# task_type:   enum    — debugging | implementation | architecture
+# prompt:      string  — モデルへの指示
+# context:
+#   language:  string  — go | rust | python | typescript
+#   framework: string  — axum | chi | tokio | "" など (省略可)
+#   snippet:   string  — 関連コードスニペット (省略可)
+# expected:
+#   root_cause:        string    — debugging 用: 期待する原因説明 (省略可)
+#   required_keywords: []string  — 回答に含まれるべきキーワード
+#   forbidden_keywords: []string — 回答に含まれてはいけないキーワード (省略可)

@@ -1,0 +1,27 @@
+id: debug-go-001
+task_type: debugging
+prompt: |
+  以下のGoコードでnil pointer dereferenceが発生します。原因と修正方法を教えてください。
+context:
+  language: go
+  framework: ""
+  snippet: |
+    type Config struct {
+        DB *sql.DB
+    }
+
+    func NewServer(cfg *Config) *Server {
+        return &Server{db: cfg.DB}
+    }
+
+    func main() {
+        var cfg *Config
+        s := NewServer(cfg)
+        _ = s
+    }
+expected:
+  root_cause: nil pointer dereference — cfg が nil のまま NewServer に渡されている
+  required_keywords:
+    - nil
+    - Config
+    - 初期化

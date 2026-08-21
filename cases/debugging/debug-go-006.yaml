@@ -1,0 +1,26 @@
+id: debug-go-006
+task_type: debugging
+prompt: |
+  以下のCIエラーを解析して原因と修正方法を教えてください。
+context:
+  language: go
+  framework: ""
+  snippet: |
+    # CI ログ
+    --- FAIL: TestHandler (0.00s)
+        handler_test.go:42: expected status 200, got 500
+        handler_test.go:43: body: "json: cannot unmarshal string into Go struct field Request.amount of type float64"
+
+    # テストコード
+    func TestHandler(t *testing.T) {
+        body := `{"amount": "100"}` // stringで送っている
+        req := httptest.NewRequest("POST", "/pay", strings.NewReader(body))
+        ...
+    }
+expected:
+  root_cause: テストのリクエストボディで amount を文字列 "100" で送っているが、サーバー側は float64 を期待している
+  required_keywords:
+    - unmarshal
+    - float64
+    - string
+    - テスト

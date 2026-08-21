@@ -1,0 +1,18 @@
+id: impl-rust-001
+task_type: implementation
+prompt: |
+  Rustで設定ファイルをパースする構造体とその実装を書いてください。
+  - TOML または YAML 形式
+  - 必須フィールドと任意フィールドを含む
+  - デフォルト値のサポート
+  - バリデーション（ポート番号の範囲チェック等）
+context:
+  language: rust
+  framework: ""
+expected:
+  required_keywords:
+    - serde
+    - derive
+    - Default
+    - validate
+    - Result

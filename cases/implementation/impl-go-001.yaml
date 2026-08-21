@@ -1,0 +1,18 @@
+id: impl-go-001
+task_type: implementation
+prompt: |
+  Goで指数バックオフ付きリトライ関数を実装してください。
+  - 最大リトライ回数: 設定可能
+  - 初期待機時間: 設定可能
+  - 最大待機時間: 設定可能
+  - context によるキャンセル対応
+context:
+  language: go
+  framework: ""
+expected:
+  required_keywords:
+    - exponential
+    - backoff
+    - context
+    - time.Sleep
+    - retry

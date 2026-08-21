@@ -1,0 +1,17 @@
+id: impl-go-003
+task_type: implementation
+prompt: |
+  Goでワーカープール（fan-out/fan-in）パターンを実装してください。
+  - ワーカー数: 設定可能
+  - ジョブとレスポンスの型: ジェネリクス使用可
+  - context によるキャンセル対応
+context:
+  language: go
+  framework: ""
+expected:
+  required_keywords:
+    - worker pool
+    - channel
+    - goroutine
+    - WaitGroup
+    - context

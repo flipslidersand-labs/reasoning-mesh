@@ -1,0 +1,14 @@
+id: arch-go-002
+task_type: architecture
+prompt: |
+  複数のマイクロサービスが共通のデータベースを参照する設計のリスクと、改善するためのアーキテクチャパターンを説明してください。
+context:
+  language: go
+  framework: ""
+expected:
+  required_keywords:
+    - shared database
+    - coupling
+    - event-driven
+    - CQRS
+    - サービス境界

@@ -1,0 +1,35 @@
+id: debug-go-002
+task_type: debugging
+prompt: |
+  Goのgoroutineで競合状態が発生しています。以下のコードの問題点と修正を教えてください。
+context:
+  language: go
+  framework: ""
+  snippet: |
+    var counter int
+
+    func increment() {
+        for i := 0; i < 1000; i++ {
+            counter++
+        }
+    }
+
+    func main() {
+        var wg sync.WaitGroup
+        for i := 0; i < 10; i++ {
+            wg.Add(1)
+            go func() {
+                defer wg.Done()
+                increment()
+            }()
+        }
+        wg.Wait()
+        fmt.Println(counter)
+    }
+expected:
+  root_cause: データ競合 — 複数のgoroutineが排他制御なしに counter を同時に読み書きしている
+  required_keywords:
+    - race condition
+    - mutex
+    - sync.Mutex
+    - atomic

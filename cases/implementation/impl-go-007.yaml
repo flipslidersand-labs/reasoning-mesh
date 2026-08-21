@@ -1,0 +1,17 @@
+id: impl-go-007
+task_type: implementation
+prompt: |
+  Goで JSON ストリームを行単位でデコードして処理する関数を実装してください（NDJSON形式）。
+  - 大量行の処理を想定
+  - エラー行はスキップしてログに記録
+  - context によるキャンセル対応
+context:
+  language: go
+  framework: ""
+expected:
+  required_keywords:
+    - json.Decoder
+    - NDJSON
+    - stream
+    - decode
+    - error handling

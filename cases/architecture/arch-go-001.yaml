@@ -1,0 +1,15 @@
+id: arch-go-001
+task_type: architecture
+prompt: |
+  GoでWebAPIサーバーを設計するとき、Repositoryパターンを使うべきかどうか判断する基準を教えてください。
+  また採用する場合のディレクトリ構成例も示してください。
+context:
+  language: go
+  framework: chi
+expected:
+  required_keywords:
+    - repository
+    - interface
+    - testability
+    - dependency injection
+    - layer

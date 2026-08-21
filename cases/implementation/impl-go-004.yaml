@@ -1,0 +1,18 @@
+id: impl-go-004
+task_type: implementation
+prompt: |
+  GoでHTTPミドルウェアチェーンを実装してください。
+  - リクエストID付与
+  - ロギング（レイテンシ・ステータスコード）
+  - パニックリカバリー
+  - 複数ミドルウェアを連鎖させる仕組み
+context:
+  language: go
+  framework: chi
+expected:
+  required_keywords:
+    - middleware
+    - handler
+    - chain
+    - recover
+    - request_id

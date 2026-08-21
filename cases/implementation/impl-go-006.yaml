@@ -1,0 +1,17 @@
+id: impl-go-006
+task_type: implementation
+prompt: |
+  Goでレート制限付きHTTPクライアントを実装してください。
+  - 1秒あたりのリクエスト数を制限
+  - バースト対応
+  - context によるタイムアウト
+context:
+  language: go
+  framework: ""
+expected:
+  required_keywords:
+    - rate limiter
+    - golang.org/x/time/rate
+    - token bucket
+    - burst
+    - Wait

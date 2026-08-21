@@ -1,0 +1,20 @@
+id: debug-go-005
+task_type: debugging
+prompt: |
+  以下のGoコードでHTTPサーバーのハンドラが想定外の値をクロージャでキャプチャしています。原因を説明してください。
+context:
+  language: go
+  framework: chi
+  snippet: |
+    for _, h := range handlers {
+        r.Get(h.path, func(w http.ResponseWriter, r *http.Request) {
+            fmt.Fprintln(w, h.name) // 常に最後のhの値になる
+        })
+    }
+expected:
+  root_cause: ループ変数のクロージャキャプチャ — h はループ変数の参照をキャプチャするため、全ハンドラが最後の h を参照する
+  required_keywords:
+    - closure
+    - loop variable
+    - capture
+    - コピー

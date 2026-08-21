@@ -1,0 +1,24 @@
+id: debug-go-007
+task_type: debugging
+prompt: |
+  以下のGoコードでコンテキストのキャンセルが伝播していません。原因と修正を教えてください。
+context:
+  language: go
+  framework: ""
+  snippet: |
+    func processItems(ctx context.Context, items []Item) error {
+        for _, item := range items {
+            // context.Background()を使っているため親のキャンセルが無視される
+            if err := processOne(context.Background(), item); err != nil {
+                return err
+            }
+        }
+        return nil
+    }
+expected:
+  root_cause: context.Background() を使っているため、親 context がキャンセルされても processOne に伝播しない
+  required_keywords:
+    - context
+    - cancel
+    - propagation
+    - 伝播

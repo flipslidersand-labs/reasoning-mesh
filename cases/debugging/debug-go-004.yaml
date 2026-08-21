@@ -1,0 +1,28 @@
+id: debug-go-004
+task_type: debugging
+prompt: |
+  以下のGoコードでインターフェースのnil比較が期待通りに動きません。なぜですか？
+context:
+  language: go
+  framework: ""
+  snippet: |
+    type MyError struct{ msg string }
+    func (e *MyError) Error() string { return e.msg }
+
+    func getError() error {
+        var err *MyError = nil
+        return err
+    }
+
+    func main() {
+        if err := getError(); err != nil {
+            fmt.Println("got error:", err) // ここが実行される
+        }
+    }
+expected:
+  root_cause: インターフェースの nil は型情報と値の両方が nil のときのみ nil。*MyError(nil) を error に変換すると型情報が設定されるため non-nil になる
+  required_keywords:
+    - interface
+    - nil
+    - 型情報
+    - concrete type
