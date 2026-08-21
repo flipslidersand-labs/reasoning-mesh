@@ -11,7 +11,9 @@ import (
 
 	"github.com/flipslidersand/reasoning-mesh/internal/config"
 	"github.com/flipslidersand/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/ollama"
+	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
 )
 
 func main() {
@@ -73,7 +75,8 @@ func runEval(cfg *config.Config, args []string) {
 		log.Fatalf("ollama unreachable: %v", err)
 	}
 
-	runner := eval.NewRunnerWithConditions(ollamaClient, eval.NoopRetriever{}, models, conditions)
+	rm := buildRetrieverMap(ctx, cfg)
+	runner := eval.NewRunnerWithRetrieverMap(ollamaClient, rm, models, conditions)
 	results := runner.Run(ctx, cases)
 
 	fmt.Println()
@@ -88,6 +91,38 @@ func runEval(cfg *config.Config, args []string) {
 		log.Fatalf("save results: %v", err)
 	}
 	fmt.Printf("\nResults saved to %s\n", outPath)
+}
+
+// buildRetrieverMap wires Qdrant + e5 embedder into per-condition retrievers.
+// Falls back to NoopRetriever for all RAG conditions if Qdrant is unavailable.
+func buildRetrieverMap(ctx context.Context, cfg *config.Config) eval.RetrieverMap {
+	noop := eval.NoopRetriever{}
+	rm := eval.RetrieverMap{
+		eval.CondCosine:     noop,
+		eval.CondScore:      noop,
+		eval.CondCompressed: noop,
+	}
+
+	qc := qdrant.New(cfg.Qdrant.Endpoint)
+	if err := qc.Ping(ctx); err != nil {
+		log.Printf("WARN: Qdrant unreachable (%v) — RAG conditions will use NoopRetriever", err)
+		return rm
+	}
+
+	emb := knowledge.NewEmbedder(cfg.Embedder.Endpoint)
+	scorer := knowledge.ScorerConfig{
+		Alpha:           cfg.Scorer.Alpha,
+		Beta:            cfg.Scorer.Beta,
+		FreshnessLambda: cfg.Scorer.FreshnessLambda,
+		TaskBoost:       cfg.Scorer.TaskBoost,
+	}
+	col := cfg.Qdrant.Collections["knowledge"]
+
+	rm[eval.CondCosine] = knowledge.NewQdrantRetriever(qc, emb, col, scorer, eval.CondCosine)
+	rm[eval.CondScore] = knowledge.NewQdrantRetriever(qc, emb, col, scorer, eval.CondScore)
+	rm[eval.CondCompressed] = knowledge.NewQdrantRetriever(qc, emb, col, scorer, eval.CondCosine) // same as cosine; compression done in runner
+	log.Printf("Qdrant OK — RAG conditions wired (%s)", cfg.Qdrant.Endpoint)
+	return rm
 }
 
 func resolveModels(cfg *config.Config, flag string) []string {

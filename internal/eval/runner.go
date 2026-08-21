@@ -11,25 +11,49 @@ import (
 
 const topK = 3
 
+// RetrieverMap maps each condition to its Retriever.
+// Conditions not present in the map fall back to NoopRetriever.
+type RetrieverMap map[Condition]Retriever
+
 // Runner executes eval cases across models and conditions.
 type Runner struct {
 	ollama     *ollama.Client
-	retriever  Retriever // NoopRetriever until Phase 2
+	retrievers RetrieverMap
 	models     []string
 	conditions []Condition
 }
 
+// NewRunner creates a Runner that uses the same retriever for all RAG conditions.
 func NewRunner(ollamaClient *ollama.Client, retriever Retriever, models []string) *Runner {
 	return NewRunnerWithConditions(ollamaClient, retriever, models, AllConditions)
 }
 
+// NewRunnerWithConditions creates a Runner with a single retriever for all RAG conditions.
 func NewRunnerWithConditions(ollamaClient *ollama.Client, retriever Retriever, models []string, conditions []Condition) *Runner {
+	rm := RetrieverMap{
+		CondCosine:     retriever,
+		CondScore:      retriever,
+		CondCompressed: retriever,
+	}
+	return NewRunnerWithRetrieverMap(ollamaClient, rm, models, conditions)
+}
+
+// NewRunnerWithRetrieverMap creates a Runner with per-condition retrievers.
+// Use this when cosine and score conditions need different QdrantRetriever instances.
+func NewRunnerWithRetrieverMap(ollamaClient *ollama.Client, rm RetrieverMap, models []string, conditions []Condition) *Runner {
 	return &Runner{
 		ollama:     ollamaClient,
-		retriever:  retriever,
+		retrievers: rm,
 		models:     models,
 		conditions: conditions,
 	}
+}
+
+func (r *Runner) retrieverFor(cond Condition) Retriever {
+	if ret, ok := r.retrievers[cond]; ok {
+		return ret
+	}
+	return NoopRetriever{}
 }
 
 // Run executes all cases × all models × all conditions and returns results.
@@ -98,7 +122,7 @@ func (r *Runner) buildPrompt(ctx context.Context, c Case, cond Condition) (strin
 
 	// Conditions B/C/D: prepend retrieved knowledge
 	if cond != CondNoRAG {
-		items, err := r.retriever.Retrieve(ctx, c.Prompt, c.TaskType, topK)
+		items, err := r.retrieverFor(cond).Retrieve(ctx, c.Prompt, c.TaskType, topK)
 		if err != nil {
 			return "", fmt.Errorf("retrieve: %w", err)
 		}
