@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/flipslidersand/reasoning-mesh/internal/bench"
 	"github.com/flipslidersand/reasoning-mesh/internal/config"
 	"github.com/flipslidersand/reasoning-mesh/internal/eval"
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
@@ -35,6 +36,8 @@ func main() {
 	switch os.Args[1] {
 	case "eval":
 		runEval(cfg, os.Args[2:])
+	case "bench":
+		runBench(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		printUsage()
@@ -46,6 +49,7 @@ func printUsage() {
 	fmt.Println("Usage: llmo <command> [flags]")
 	fmt.Println("Commands:")
 	fmt.Println("  eval    Run eval harness against test cases")
+	fmt.Println("  bench   Show longitudinal benchmark across result files")
 }
 
 func runEval(cfg *config.Config, args []string) {
@@ -147,6 +151,24 @@ func resolveConditions(flag string) []eval.Condition {
 		conds = append(conds, eval.Condition(s))
 	}
 	return conds
+}
+
+func runBench(args []string) {
+	fs := flag.NewFlagSet("bench", flag.ExitOnError)
+	resultsDir := fs.String("results", "results", "directory containing eval result JSON files")
+	_ = fs.Parse(args)
+
+	runs, err := bench.Load(*resultsDir)
+	if err != nil {
+		log.Fatalf("bench load: %v", err)
+	}
+	if len(runs) == 0 {
+		fmt.Printf("No result files found in %s\n", *resultsDir)
+		return
+	}
+
+	deltas := bench.ComputeDeltas(runs)
+	bench.PrintDeltas(runs, deltas)
 }
 
 func splitComma(s string) []string {

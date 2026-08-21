@@ -1,0 +1,54 @@
+name: Knowledge Ingest
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # need HEAD~1 for diff
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        id: tests
+        run: go test ./...
+
+  ingest:
+    needs: test
+    runs-on: ubuntu-latest
+    if: ${{ vars.LLMO_TRIGGER_URL != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Build diff + CI log payload
+        id: payload
+        run: |
+          DIFF=$(git diff HEAD~1 HEAD -- '*.go' | head -c 32768)
+          COMMIT_SHA=${{ github.sha }}
+          # Emit as escaped JSON string via file to avoid shell quoting issues
+          jq -n \
+            --arg sha "$COMMIT_SHA" \
+            --arg diff "$DIFF" \
+            --arg ci_log "" \
+            '{"commit_sha": $sha, "diff": $diff, "ci_log": $ci_log}' > /tmp/trigger_payload.json
+          echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: POST /v1/trigger
+        run: |
+          curl -sf -X POST "${{ vars.LLMO_TRIGGER_URL }}/v1/trigger" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.LLMO_TRIGGER_TOKEN }}" \
+            --data @/tmp/trigger_payload.json \
+            --max-time 10 \
+          && echo "trigger accepted for ${{ steps.payload.outputs.sha }}" \
+          || echo "trigger failed (non-fatal)"
+        continue-on-error: true
