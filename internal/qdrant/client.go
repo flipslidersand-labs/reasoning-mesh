@@ -114,6 +114,37 @@ func (c *Client) Search(ctx context.Context, collection string, vector []float32
 	return result.Result, nil
 }
 
+// GetByID fetches a single point by its ID.
+func (c *Client) GetByID(ctx context.Context, collection, id string) ([]SearchResult, error) {
+	body, _ := json.Marshal(map[string]any{
+		"ids":          []string{id},
+		"with_payload": true,
+	})
+	url := fmt.Sprintf("%s/collections/%s/points", c.endpoint, collection)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("qdrant get: status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Result []SearchResult `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return result.Result, nil
+}
+
 func (c *Client) UpdatePayload(ctx context.Context, collection, id string, payload map[string]any) error {
 	body, _ := json.Marshal(map[string]any{
 		"payload": payload,
