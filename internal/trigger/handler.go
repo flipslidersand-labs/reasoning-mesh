@@ -5,14 +5,18 @@ import (
 	"log"
 	"net/http"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
 )
 
 // TriggerRequest is the JSON body sent by CI on a green build.
 type TriggerRequest struct {
 	CommitSHA string `json:"commit_sha"`
-	Diff      string `json:"diff"`    // output of git diff HEAD~1
-	CILog     string `json:"ci_log"`  // relevant CI step log
+	Diff      string `json:"diff"`   // output of git diff HEAD~1
+	CILog     string `json:"ci_log"` // relevant CI step log
 }
 
 // Handler handles POST /v1/trigger and dispatches to the Extractor.
@@ -32,20 +36,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx, span := telemetry.Tracer("trigger/ingest").Start(r.Context(), "trigger")
+	defer span.End()
+
 	var req TriggerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	if req.CommitSHA == "" {
+		span.SetStatus(codes.Error, "commit_sha required")
 		http.Error(w, "commit_sha required", http.StatusBadRequest)
 		return
 	}
 
+	span.SetAttributes(
+		attribute.String("commit_sha", req.CommitSHA),
+		attribute.Int("diff_bytes", len(req.Diff)),
+		attribute.Int("ci_log_bytes", len(req.CILog)),
+	)
+
 	// Run extraction asynchronously so the CI webhook returns immediately.
 	if h.extractor != nil {
 		go func() {
-			if err := h.extractor.Run(r.Context(), req.CommitSHA, req.Diff, req.CILog); err != nil {
+			if err := h.extractor.Run(ctx, req.CommitSHA, req.Diff, req.CILog); err != nil {
 				log.Printf("trigger: extractor error for %s: %v", req.CommitSHA, err)
 			}
 		}()

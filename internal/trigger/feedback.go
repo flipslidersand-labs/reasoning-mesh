@@ -4,7 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
 )
 
 // PendingLookup is the subset of server.PendingStore needed by the feedback handler.
@@ -22,7 +26,7 @@ type PendingLookup interface {
 type FeedbackRequest struct {
 	RequestID    string   `json:"request_id,omitempty"`
 	KnowledgeIDs []string `json:"knowledge_ids,omitempty"`
-	Outcome      bool     `json:"outcome"`              // true = success
+	Outcome      bool     `json:"outcome"`             // true = success
 	Evaluator    string   `json:"evaluator,omitempty"` // e.g. "ci", "eval", "human"
 }
 
@@ -44,8 +48,12 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx, span := telemetry.Tracer("trigger/feedback").Start(r.Context(), "feedback")
+	defer span.End()
+
 	var req FeedbackRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -55,15 +63,28 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ids = h.pending.Get(req.RequestID)
 	}
 	if len(ids) == 0 {
+		span.SetStatus(codes.Error, "no knowledge_ids resolved")
 		http.Error(w, "knowledge_ids or valid request_id required", http.StatusBadRequest)
 		return
 	}
+
+	outcome := "failure"
+	if req.Outcome {
+		outcome = "success"
+	}
+	span.SetAttributes(
+		attribute.String("feedback_outcome", outcome),
+		attribute.String("evaluator", req.Evaluator),
+		attribute.Int("knowledge_id_count", len(ids)),
+		attribute.String("request_id", req.RequestID),
+	)
 
 	h.updater.Send(knowledge.FeedbackEvent{
 		KnowledgeIDs: ids,
 		Outcome:      req.Outcome,
 		Evaluator:    req.Evaluator,
 	})
+	_ = ctx // span is derived from ctx; suppress unused warning
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
