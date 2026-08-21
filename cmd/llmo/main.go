@@ -34,6 +34,10 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "ask":
+		runAsk(os.Args[2:])
+	case "ingest":
+		runIngest(os.Args[2:])
 	case "eval":
 		runEval(cfg, os.Args[2:])
 	case "bench":
@@ -50,6 +54,8 @@ func main() {
 func printUsage() {
 	fmt.Println("Usage: llmo <command> [flags]")
 	fmt.Println("Commands:")
+	fmt.Println("  ask     Send a task to the llmo server and print the response")
+	fmt.Println("  ingest  Ingest a git commit or file into the knowledge base")
 	fmt.Println("  eval    Run eval harness against test cases")
 	fmt.Println("  bench   Show longitudinal benchmark across result files")
 	fmt.Println("  ingest  Manually ingest a knowledge entry into Qdrant")
