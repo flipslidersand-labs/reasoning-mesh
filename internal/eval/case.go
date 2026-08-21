@@ -15,6 +15,7 @@ const (
 	TaskDebugging      TaskType = "debugging"
 	TaskImplementation TaskType = "implementation"
 	TaskArchitecture   TaskType = "architecture"
+	TaskTesting        TaskType = "testing"
 )
 
 type Case struct {
