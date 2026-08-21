@@ -1,0 +1,27 @@
+ollama:
+  endpoint: "http://192.168.68.56:11434"
+  timeout_seconds: 120
+  models:
+    router: "qwen2.5:7b"
+    knowledge: "ornith:9b"
+
+qdrant:
+  endpoint: "http://192.168.68.63:6333"
+  collections:
+    knowledge: "rm_knowledge"
+    experience: "rm_experience"
+
+embedder:
+  endpoint: "http://192.168.68.63:9092"
+  batch_size: 64
+  dim: 768
+
+server:
+  host: "0.0.0.0"
+  port: 8765
+
+scorer:
+  alpha: 2.0
+  beta: 2.0
+  freshness_lambda: 0.01
+  task_boost: 1.5
