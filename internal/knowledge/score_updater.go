@@ -12,6 +12,7 @@ import (
 type FeedbackEvent struct {
 	KnowledgeIDs []string // IDs that were used during inference
 	Outcome      bool     // true = success, false = failure
+	Evaluator    string   // source label, e.g. "ci", "eval"
 }
 
 // ScoreUpdater listens on a channel and asynchronously updates Qdrant payloads.

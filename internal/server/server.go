@@ -16,12 +16,18 @@ type Config struct {
 	Extractor    *knowledge.Extractor
 	ScoreUpdater *knowledge.ScoreUpdater
 	Retriever    InferRetriever
-	BearerToken  string // if non-empty, all endpoints require Authorization: Bearer <token>
+	Pending      *PendingStore // if nil, a new store is created
+	BearerToken  string        // if non-empty, all endpoints require Authorization: Bearer <token>
 }
 
 // Build constructs the HTTP mux with all registered routes.
 func Build(cfg Config) http.Handler {
 	mux := http.NewServeMux()
+
+	pending := cfg.Pending
+	if pending == nil {
+		pending = NewPendingStore()
+	}
 
 	// Health
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -33,13 +39,14 @@ func Build(cfg Config) http.Handler {
 	trigger.RegisterRoutes(mux, cfg.Extractor)
 
 	// Feedback: POST /v1/feedback (inference outcome → score update)
-	trigger.RegisterFeedbackRoute(mux, cfg.ScoreUpdater)
+	trigger.RegisterFeedbackRoute(mux, cfg.ScoreUpdater, pending)
 
 	// Infer: POST /v1/infer (RAG-augmented routing inference)
 	mux.Handle("/v1/infer", &inferHandler{
 		router:    cfg.Router,
 		retriever: cfg.Retriever,
 		updater:   cfg.ScoreUpdater,
+		pending:   pending,
 	})
 
 	if cfg.BearerToken != "" {

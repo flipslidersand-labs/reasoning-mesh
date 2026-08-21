@@ -29,11 +29,12 @@ type InferRequest struct {
 
 // InferResponse is the JSON response for POST /v1/infer.
 type InferResponse struct {
+	RequestID    string   `json:"request_id"`    // use in POST /v1/feedback for linkage
 	Answer       string   `json:"answer"`
 	Model        string   `json:"model"`
 	PromptTokens int      `json:"prompt_tokens"`
 	TotalTokens  int      `json:"total_tokens"`
-	KnowledgeIDs []string `json:"knowledge_ids"` // used for feedback linkage (#28)
+	KnowledgeIDs []string `json:"knowledge_ids"` // explicit IDs; request_id covers the same
 	Error        string   `json:"error,omitempty"`
 }
 
@@ -41,6 +42,7 @@ type inferHandler struct {
 	router    *router.Router
 	retriever InferRetriever
 	updater   *knowledge.ScoreUpdater
+	pending   *PendingStore
 }
 
 func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -118,13 +120,18 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	)
 	genSpan.End()
 
+	// Store knowledge IDs so clients can reference them by request_id in feedback.
+	requestID := h.pending.Put(knowledgeIDs)
+
 	span.SetAttributes(
 		attribute.String("model", resp.Model),
 		attribute.Int("knowledge_id_count", len(knowledgeIDs)),
+		attribute.String("request_id", requestID),
 	)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(InferResponse{
+		RequestID:    requestID,
 		Answer:       resp.Text,
 		Model:        resp.Model,
 		PromptTokens: resp.PromptTokens,

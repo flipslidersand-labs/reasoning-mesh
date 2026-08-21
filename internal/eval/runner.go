@@ -3,6 +3,7 @@ package eval
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -17,10 +18,11 @@ type RetrieverMap map[Condition]Retriever
 
 // Runner executes eval cases across models and conditions.
 type Runner struct {
-	ollama     *ollama.Client
-	retrievers RetrieverMap
-	models     []string
-	conditions []Condition
+	ollama         *ollama.Client
+	retrievers     RetrieverMap
+	models         []string
+	conditions     []Condition
+	feedbackSender FeedbackSender // optional; nil = no auto-feedback
 }
 
 // NewRunner creates a Runner that uses the same retriever for all RAG conditions.
@@ -47,6 +49,13 @@ func NewRunnerWithRetrieverMap(ollamaClient *ollama.Client, rm RetrieverMap, mod
 		models:     models,
 		conditions: conditions,
 	}
+}
+
+// WithFeedbackSender attaches an optional FeedbackSender.
+// When set, the runner posts feedback to /v1/feedback after every scored eval run.
+func (r *Runner) WithFeedbackSender(fs FeedbackSender) *Runner {
+	r.feedbackSender = fs
+	return r
 }
 
 func (r *Runner) retrieverFor(cond Condition) Retriever {
@@ -76,6 +85,12 @@ func (r *Runner) Run(ctx context.Context, cases []Case) []Result {
 	return results
 }
 
+// promptResult bundles the built prompt with the knowledge IDs used to build it.
+type promptResult struct {
+	Prompt       string
+	KnowledgeIDs []string
+}
+
 func (r *Runner) runOne(ctx context.Context, c Case, model string, cond Condition) Result {
 	res := Result{
 		CaseID:    c.ID,
@@ -84,14 +99,14 @@ func (r *Runner) runOne(ctx context.Context, c Case, model string, cond Conditio
 		Condition: cond,
 	}
 
-	prompt, err := r.buildPrompt(ctx, c, cond)
+	pr, err := r.buildPrompt(ctx, c, cond)
 	if err != nil {
 		res.Error = fmt.Sprintf("build prompt: %v", err)
 		return res
 	}
 
 	start := time.Now()
-	genResp, err := r.ollama.GenerateFull(ctx, model, prompt)
+	genResp, err := r.ollama.GenerateFull(ctx, model, pr.Prompt)
 	res.LatencyMS = time.Since(start).Milliseconds()
 
 	if err != nil {
@@ -100,11 +115,10 @@ func (r *Runner) runOne(ctx context.Context, c Case, model string, cond Conditio
 	}
 
 	res.Answer = genResp.Response
-	// Use Ollama's actual token counts when available; fall back to word count
 	if genResp.PromptEvalCount > 0 {
 		res.PromptTokens = genResp.PromptEvalCount
 	} else {
-		res.PromptTokens = len(strings.Fields(prompt))
+		res.PromptTokens = len(strings.Fields(pr.Prompt))
 	}
 	if genResp.EvalCount > 0 {
 		res.CompletionTokens = genResp.EvalCount
@@ -114,19 +128,30 @@ func (r *Runner) runOne(ctx context.Context, c Case, model string, cond Conditio
 	res.KeywordRecall = res.keywordRecall(genResp.Response, c.Expected.RequiredKeywords)
 	res.Accuracy = r.judgeAccuracy(ctx, c, genResp.Response)
 
+	// Auto-feedback: non-blocking, non-fatal
+	if r.feedbackSender != nil && len(pr.KnowledgeIDs) > 0 && res.Accuracy >= 0 {
+		success := res.Accuracy >= 0.7
+		if err := r.feedbackSender.Send(ctx, pr.KnowledgeIDs, success, "eval"); err != nil {
+			log.Printf("feedback: %v", err)
+		}
+	}
+
 	return res
 }
 
-func (r *Runner) buildPrompt(ctx context.Context, c Case, cond Condition) (string, error) {
+func (r *Runner) buildPrompt(ctx context.Context, c Case, cond Condition) (promptResult, error) {
 	var sb strings.Builder
+	var knowledgeIDs []string
 
-	// Conditions B/C/D: prepend retrieved knowledge
 	if cond != CondNoRAG {
 		items, err := r.retrieverFor(cond).Retrieve(ctx, c.Prompt, c.TaskType, topK)
 		if err != nil {
-			return "", fmt.Errorf("retrieve: %w", err)
+			return promptResult{}, fmt.Errorf("retrieve: %w", err)
 		}
 		if len(items) > 0 {
+			for _, item := range items {
+				knowledgeIDs = append(knowledgeIDs, item.ID)
+			}
 			switch cond {
 			case CondCosine, CondScore:
 				sb.WriteString("## 関連ナレッジ\n")
@@ -137,7 +162,6 @@ func (r *Runner) buildPrompt(ctx context.Context, c Case, cond Condition) (strin
 			case CondCompressed:
 				summary, err := r.compressKnowledge(ctx, items)
 				if err != nil {
-					// fallback: use raw knowledge
 					sb.WriteString("## 関連ナレッジ（要約）\n")
 					for _, item := range items {
 						sb.WriteString(item.Content + "\n")
@@ -150,17 +174,15 @@ func (r *Runner) buildPrompt(ctx context.Context, c Case, cond Condition) (strin
 		}
 	}
 
-	// Main prompt
 	sb.WriteString(c.Prompt)
 
-	// Append context snippet if present
 	if c.Context.Snippet != "" {
 		sb.WriteString("\n\n```" + c.Context.Language + "\n")
 		sb.WriteString(c.Context.Snippet)
 		sb.WriteString("\n```")
 	}
 
-	return sb.String(), nil
+	return promptResult{Prompt: sb.String(), KnowledgeIDs: knowledgeIDs}, nil
 }
 
 // judgeAccuracy uses qwen2.5:7b to score the answer against the expected output (0.0-1.0).
@@ -210,6 +232,5 @@ func (r *Runner) compressKnowledge(ctx context.Context, items []KnowledgeItem) (
 		"以下のナレッジを1段落（200字以内）に要約してください。重要な技術キーワードを保持すること。\n\n%s",
 		raw.String(),
 	)
-	// Always use the router model (qwen2.5:7b) for compression to keep costs low
 	return r.ollama.Generate(ctx, "qwen2.5:7b", compressPrompt)
 }
