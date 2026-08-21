@@ -43,11 +43,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Run extraction asynchronously so the CI webhook returns immediately.
-	go func() {
-		if err := h.extractor.Run(r.Context(), req.CommitSHA, req.Diff, req.CILog); err != nil {
-			log.Printf("trigger: extractor error for %s: %v", req.CommitSHA, err)
-		}
-	}()
+	if h.extractor != nil {
+		go func() {
+			if err := h.extractor.Run(r.Context(), req.CommitSHA, req.Diff, req.CILog); err != nil {
+				log.Printf("trigger: extractor error for %s: %v", req.CommitSHA, err)
+			}
+		}()
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
