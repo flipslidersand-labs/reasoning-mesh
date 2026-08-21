@@ -26,9 +26,11 @@ type QdrantConfig struct {
 }
 
 type EmbedderConfig struct {
-	Endpoint  string `yaml:"endpoint"`
-	BatchSize int    `yaml:"batch_size"`
-	Dim       int    `yaml:"dim"`
+	Endpoint   string `yaml:"endpoint"`
+	APIKey     string `yaml:"api_key"`
+	Collection string `yaml:"collection"`
+	BatchSize  int    `yaml:"batch_size"`
+	Dim        int    `yaml:"dim"`
 }
 
 type ServerConfig struct {

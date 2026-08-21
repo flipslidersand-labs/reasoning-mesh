@@ -1,6 +1,7 @@
 package trigger
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -36,7 +37,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, span := telemetry.Tracer("trigger/ingest").Start(r.Context(), "trigger")
+	_, span := telemetry.Tracer("trigger/ingest").Start(r.Context(), "trigger")
 	defer span.End()
 
 	var req TriggerRequest
@@ -57,10 +58,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		attribute.Int("ci_log_bytes", len(req.CILog)),
 	)
 
-	// Run extraction asynchronously so the CI webhook returns immediately.
+	// Run extraction asynchronously. Use Background so the context is not
+	// cancelled when the HTTP handler returns and the request context closes.
 	if h.extractor != nil {
 		go func() {
-			if err := h.extractor.Run(ctx, req.CommitSHA, req.Diff, req.CILog); err != nil {
+			if err := h.extractor.Run(context.Background(), req.CommitSHA, req.Diff, req.CILog); err != nil {
 				log.Printf("trigger: extractor error for %s: %v", req.CommitSHA, err)
 			}
 		}()

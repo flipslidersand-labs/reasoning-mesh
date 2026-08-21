@@ -54,11 +54,11 @@ func main() {
 func printUsage() {
 	fmt.Println("Usage: llmo <command> [flags]")
 	fmt.Println("Commands:")
-	fmt.Println("  ask     Send a task to the llmo server and print the response")
-	fmt.Println("  ingest  Ingest a git commit or file into the knowledge base")
-	fmt.Println("  eval    Run eval harness against test cases")
-	fmt.Println("  bench         Show longitudinal benchmark across result files")
-	fmt.Println("  ingest-local  Directly ingest a knowledge entry into Qdrant")
+	fmt.Println("  ask          Send a task to the llmo server and print the response")
+	fmt.Println("  ingest       Ingest a git commit or file into the knowledge base")
+	fmt.Println("  eval         Run eval harness against test cases")
+	fmt.Println("  bench        Show longitudinal benchmark across result files")
+	fmt.Println("  ingest-local Directly ingest a knowledge entry into Qdrant")
 }
 
 func runEval(cfg *config.Config, args []string) {
@@ -122,7 +122,7 @@ func buildRetrieverMap(ctx context.Context, cfg *config.Config) eval.RetrieverMa
 		return rm
 	}
 
-	emb := knowledge.NewEmbedder(cfg.Embedder.Endpoint)
+	emb := knowledge.NewEmbedderWithAuth(cfg.Embedder.Endpoint, cfg.Embedder.APIKey, cfg.Embedder.Collection)
 	scorer := knowledge.ScorerConfig{
 		Alpha:           cfg.Scorer.Alpha,
 		Beta:            cfg.Scorer.Beta,
@@ -163,7 +163,7 @@ func resolveConditions(flag string) []eval.Condition {
 }
 
 func runIngestLocal(cfg *config.Config, args []string) {
-	fs := flag.NewFlagSet("ingest", flag.ExitOnError)
+	fs := flag.NewFlagSet("ingest-local", flag.ExitOnError)
 	contentFlag := fs.String("content", "", "knowledge text to ingest")
 	fileFlag := fs.String("file", "", "read content from file (overrides -content)")
 	taskType := fs.String("task-type", "implementation", "task type: debugging|implementation|architecture|testing")
@@ -193,7 +193,7 @@ func runIngestLocal(cfg *config.Config, args []string) {
 		log.Fatalf("qdrant unreachable: %v", err)
 	}
 
-	emb := knowledge.NewEmbedder(cfg.Embedder.Endpoint)
+	emb := knowledge.NewEmbedderWithAuth(cfg.Embedder.Endpoint, cfg.Embedder.APIKey, cfg.Embedder.Collection)
 	col := cfg.Qdrant.Collections["knowledge"]
 	store := knowledge.NewIngestStore(emb, qc, col)
 

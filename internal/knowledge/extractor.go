@@ -103,12 +103,14 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 // ExportedDeterministicID is deterministicID exposed for testing.
 var ExportedDeterministicID = deterministicID
 
-// deterministicID returns sha256(task_type + "|" + content_hash) as a hex string.
-// This ensures idempotent upserts: re-ingesting the same content is a no-op.
+// deterministicID returns a Qdrant-compatible UUID (32 lowercase hex chars) derived from
+// sha256(task_type + "|" + sha256(content)). Qdrant requires UUID or uint64 as point ID.
 func deterministicID(taskType eval.TaskType, content string) string {
-	contentHash := fmt.Sprintf("%x", sha256.Sum256([]byte(content)))
-	combined := string(taskType) + "|" + contentHash
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(combined)))
+	contentHash := sha256.Sum256([]byte(content))
+	combined := string(taskType) + "|" + fmt.Sprintf("%x", contentHash)
+	h := sha256.Sum256([]byte(combined))
+	// Use first 16 bytes (128 bits) formatted as UUID hex (no dashes)
+	return fmt.Sprintf("%x", h[:16])
 }
 
 func toQdrantTaskType(t eval.TaskType) qdrant.TaskType {

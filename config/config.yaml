@@ -13,6 +13,8 @@ qdrant:
 
 embedder:
   endpoint: "http://192.168.68.63:9092"
+  api_key: "3da2e5336a8360079b2ea361bfc8a73a44afb259638856ab"
+  collection: "rm_knowledge"
   batch_size: 64
   dim: 768
 

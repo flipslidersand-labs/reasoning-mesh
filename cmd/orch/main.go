@@ -66,7 +66,7 @@ func run(cfg *config.Config) error {
 	log.Printf("qdrant OK (%s)", cfg.Qdrant.Endpoint)
 
 	// --- Embedder ---
-	embedder := knowledge.NewEmbedder(cfg.Embedder.Endpoint)
+	embedder := knowledge.NewEmbedderWithAuth(cfg.Embedder.Endpoint, cfg.Embedder.APIKey, cfg.Embedder.Collection)
 
 	// --- Scorer ---
 	scorer := knowledge.ScorerConfig{

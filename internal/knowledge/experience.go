@@ -72,7 +72,8 @@ func (s *ExperienceStore) Record(ctx context.Context, rec FailureRecord) error {
 var ExportedExperienceID = experienceID
 
 func experienceID(taskType eval.TaskType, failureType qdrant.FailureType, content string) string {
-	contentHash := fmt.Sprintf("%x", sha256.Sum256([]byte(content)))
-	combined := string(taskType) + "|" + string(failureType) + "|" + contentHash
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(combined)))
+	contentHash := sha256.Sum256([]byte(content))
+	combined := string(taskType) + "|" + string(failureType) + "|" + fmt.Sprintf("%x", contentHash)
+	h := sha256.Sum256([]byte(combined))
+	return fmt.Sprintf("%x", h[:16])
 }
