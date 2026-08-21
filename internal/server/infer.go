@@ -6,9 +6,13 @@ import (
 	"net/http"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/flipslidersand/reasoning-mesh/internal/eval"
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/router"
+	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
 )
 
 // InferRetriever is the interface the infer handler needs for RAG lookup.
@@ -45,12 +49,17 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx, span := telemetry.Tracer("server/infer").Start(r.Context(), "infer")
+	defer span.End()
+
 	var req InferRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		writeErr(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	if strings.TrimSpace(req.Prompt) == "" {
+		span.SetStatus(codes.Error, "prompt required")
 		writeErr(w, "prompt required", http.StatusBadRequest)
 		return
 	}
@@ -63,12 +72,19 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if topK <= 0 {
 		topK = 3
 	}
+	span.SetAttributes(
+		attribute.String("task_type", string(taskType)),
+		attribute.Int("top_k", topK),
+	)
 
 	// RAG: retrieve relevant knowledge items
 	var knowledgeIDs []string
 	augmentedPrompt := req.Prompt
 	if h.retriever != nil {
-		items, err := h.retriever.Retrieve(r.Context(), req.Prompt, taskType, topK)
+		ragCtx, ragSpan := telemetry.Tracer("server/infer").Start(ctx, "rag_retrieve")
+		items, err := h.retriever.Retrieve(ragCtx, req.Prompt, taskType, topK)
+		ragSpan.SetAttributes(attribute.Int("retrieved_count", len(items)))
+		ragSpan.End()
 		if err == nil && len(items) > 0 {
 			var sb strings.Builder
 			sb.WriteString("## 関連ナレッジ\n")
@@ -86,11 +102,26 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Route to appropriate model adapter
-	resp, err := h.router.Generate(r.Context(), taskType, augmentedPrompt)
+	genCtx, genSpan := telemetry.Tracer("server/infer").Start(ctx, "generate")
+	resp, err := h.router.Generate(genCtx, taskType, augmentedPrompt)
 	if err != nil {
+		genSpan.SetStatus(codes.Error, err.Error())
+		genSpan.End()
+		span.SetStatus(codes.Error, err.Error())
 		writeErr(w, "inference failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	genSpan.SetAttributes(
+		attribute.String("model", resp.Model),
+		attribute.Int("prompt_tokens", resp.PromptTokens),
+		attribute.Int("total_tokens", resp.TotalTokens),
+	)
+	genSpan.End()
+
+	span.SetAttributes(
+		attribute.String("model", resp.Model),
+		attribute.Int("knowledge_id_count", len(knowledgeIDs)),
+	)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(InferResponse{

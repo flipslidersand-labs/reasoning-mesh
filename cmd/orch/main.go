@@ -17,6 +17,7 @@ import (
 	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
 	"github.com/flipslidersand/reasoning-mesh/internal/router"
 	"github.com/flipslidersand/reasoning-mesh/internal/server"
+	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
 )
 
 func main() {
@@ -36,6 +37,19 @@ func main() {
 
 func run(cfg *config.Config) error {
 	ctx := context.Background()
+
+	// --- OpenTelemetry ---
+	shutdown, err := telemetry.Setup(ctx)
+	if err != nil {
+		log.Printf("WARN: otel setup failed: %v — tracing disabled", err)
+	} else {
+		defer func() {
+			if err := shutdown(ctx); err != nil {
+				log.Printf("otel shutdown: %v", err)
+			}
+		}()
+		log.Printf("otel OK (exporter: %s)", otelExporterName())
+	}
 
 	// --- Ollama ---
 	ollamaClient := ollama.New(cfg.Ollama.Endpoint, cfg.Ollama.TimeoutSeconds)
@@ -120,6 +134,7 @@ func run(cfg *config.Config) error {
 	}
 
 	log.Printf("reasoning-mesh listening on %s", addr)
+	log.Printf("service.name=%s", telemetry.ServiceName)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -136,4 +151,11 @@ func run(cfg *config.Config) error {
 	shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return httpServer.Shutdown(shutCtx)
+}
+
+func otelExporterName() string {
+	if e := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); e != "" {
+		return "otlp/http → " + e
+	}
+	return "stdout (stderr)"
 }

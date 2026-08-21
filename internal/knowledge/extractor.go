@@ -7,8 +7,12 @@ import (
 	"log"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/flipslidersand/reasoning-mesh/internal/eval"
 	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
+	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
 )
 
 // Extractor is the full pipeline: chunk → structure → dedup ID → embed → upsert.
@@ -38,12 +42,18 @@ func NewExtractor(s *Structurizer, emb *Embedder, qc *qdrant.Client, collection 
 // Run extracts knowledge from a CI-green commit and upserts it to Qdrant.
 // commitSHA is embedded in the deterministic ID to allow re-runs without duplication.
 func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) error {
+	ctx, span := telemetry.Tracer("knowledge/extractor").Start(ctx, "extractor.Run")
+	defer span.End()
+	span.SetAttributes(attribute.String("commit_sha", commitSHA))
+
 	chunks := e.chunker(diff, ciLog)
+	span.SetAttributes(attribute.Int("chunk_count", len(chunks)))
 	if len(chunks) == 0 {
 		log.Printf("extractor: no chunks from commit %s", commitSHA)
 		return nil
 	}
 
+	upserted := 0
 	for _, chunk := range chunks {
 		sc, err := e.structurizer.Structurize(ctx, chunk)
 		if err != nil {
@@ -80,10 +90,13 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 
 		if err := e.qdrant.Upsert(ctx, e.collection, id, vectors[0], payload); err != nil {
 			log.Printf("extractor: upsert %s error: %v", id, err)
+			span.SetStatus(codes.Error, err.Error())
 			continue
 		}
 		log.Printf("extractor: upserted %s (task=%s lang=%s)", id, sc.TaskType, sc.Language)
+		upserted++
 	}
+	span.SetAttributes(attribute.Int("upserted_count", upserted))
 	return nil
 }
 
