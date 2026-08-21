@@ -67,7 +67,7 @@ func (r *Runner) runOne(ctx context.Context, c Case, model string, cond Conditio
 	}
 
 	start := time.Now()
-	answer, err := r.ollama.Generate(ctx, model, prompt)
+	genResp, err := r.ollama.GenerateFull(ctx, model, prompt)
 	res.LatencyMS = time.Since(start).Milliseconds()
 
 	if err != nil {
@@ -75,11 +75,20 @@ func (r *Runner) runOne(ctx context.Context, c Case, model string, cond Conditio
 		return res
 	}
 
-	res.Answer = answer
-	// Approximate token counts (Ollama doesn't always return token counts in generate mode)
-	res.PromptTokens = len(strings.Fields(prompt))
-	res.CompletionTokens = len(strings.Fields(answer))
-	res.KeywordRecall = res.keywordRecall(answer, c.Expected.RequiredKeywords)
+	res.Answer = genResp.Response
+	// Use Ollama's actual token counts when available; fall back to word count
+	if genResp.PromptEvalCount > 0 {
+		res.PromptTokens = genResp.PromptEvalCount
+	} else {
+		res.PromptTokens = len(strings.Fields(prompt))
+	}
+	if genResp.EvalCount > 0 {
+		res.CompletionTokens = genResp.EvalCount
+	} else {
+		res.CompletionTokens = len(strings.Fields(genResp.Response))
+	}
+	res.KeywordRecall = res.keywordRecall(genResp.Response, c.Expected.RequiredKeywords)
+	res.Accuracy = r.judgeAccuracy(ctx, c, genResp.Response)
 
 	return res
 }
@@ -128,6 +137,43 @@ func (r *Runner) buildPrompt(ctx context.Context, c Case, cond Condition) (strin
 	}
 
 	return sb.String(), nil
+}
+
+// judgeAccuracy uses qwen2.5:7b to score the answer against the expected output (0.0-1.0).
+// Returns -1 on error (judge unavailable), so callers can distinguish "not scored" from 0.
+func (r *Runner) judgeAccuracy(ctx context.Context, c Case, answer string) float64 {
+	expected := c.Expected.RootCause
+	if expected == "" && len(c.Expected.RequiredKeywords) > 0 {
+		expected = "must include: " + strings.Join(c.Expected.RequiredKeywords, ", ")
+	}
+	if expected == "" {
+		return -1
+	}
+
+	judgePrompt := fmt.Sprintf(`以下の回答を評価してください。
+期待される内容: %s
+
+実際の回答:
+%s
+
+この回答は期待される内容を正しく含んでいますか？
+0.0（全く不正解）から1.0（完全正解）の数値のみ返してください。数値以外は出力しないでください。`, expected, answer)
+
+	raw, err := r.ollama.Generate(ctx, "qwen2.5:7b", judgePrompt)
+	if err != nil {
+		return -1
+	}
+	raw = strings.TrimSpace(raw)
+	var score float64
+	if _, err := fmt.Sscanf(raw, "%f", &score); err != nil {
+		return -1
+	}
+	if score < 0 {
+		score = 0
+	} else if score > 1 {
+		score = 1
+	}
+	return score
 }
 
 // compressKnowledge uses qwen2.5:7b to summarise retrieved items into a single paragraph.

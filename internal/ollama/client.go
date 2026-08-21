@@ -28,9 +28,12 @@ type GenerateRequest struct {
 }
 
 type GenerateResponse struct {
-	Model    string `json:"model"`
-	Response string `json:"response"`
-	Done     bool   `json:"done"`
+	Model              string `json:"model"`
+	Response           string `json:"response"`
+	Done               bool   `json:"done"`
+	PromptEvalCount    int    `json:"prompt_eval_count"`
+	EvalCount          int    `json:"eval_count"`
+	TotalDurationNs    int64  `json:"total_duration"`
 }
 
 type ChatMessage struct {
@@ -50,29 +53,37 @@ type ChatResponse struct {
 	Done    bool        `json:"done"`
 }
 
-func (c *Client) Generate(ctx context.Context, model, prompt string) (string, error) {
+func (c *Client) GenerateFull(ctx context.Context, model, prompt string) (*GenerateResponse, error) {
 	body, _ := json.Marshal(GenerateRequest{Model: model, Prompt: prompt, Stream: false})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint+"/api/generate", bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("ollama generate: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("ollama generate: status %d", resp.StatusCode)
 	}
 
 	var result GenerateResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (c *Client) Generate(ctx context.Context, model, prompt string) (string, error) {
+	r, err := c.GenerateFull(ctx, model, prompt)
+	if err != nil {
 		return "", err
 	}
-	return result.Response, nil
+	return r.Response, nil
 }
 
 func (c *Client) Chat(ctx context.Context, model string, messages []ChatMessage) (string, error) {

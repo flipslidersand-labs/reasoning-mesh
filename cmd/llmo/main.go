@@ -78,6 +78,7 @@ func runEval(cfg *config.Config, args []string) {
 
 	fmt.Println()
 	eval.PrintTable(results)
+	eval.PrintSummary(eval.ComputeSummaries(results))
 
 	if err := os.MkdirAll(*outDir, 0755); err != nil {
 		log.Fatalf("mkdir %s: %v", *outDir, err)
