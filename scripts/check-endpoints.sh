@@ -1,20 +1,39 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+
+OLLAMA_URL="${OLLAMA_URL:-http://192.168.68.56:11434}"
+EMBEDDER_URL="${EMBEDDER_URL:-http://192.168.68.63:9092}"
+QDRANT_URL="${QDRANT_URL:-http://192.168.68.63:6333}"
+
+ok()   { echo "OK — $*"; }
+fail() { echo "FAIL — $*" >&2; exit 1; }
 
 echo "=== Endpoint Health Check ==="
 
-echo -n "YUKI Ollama (192.168.68.56:11434)... "
-TAGS=$(curl -sf http://192.168.68.56:11434/api/tags)
-if [ -n "$TAGS" ]; then
-  echo "$TAGS" | python3 -c "import sys,json; models=json.load(sys.stdin).get('models',[]); print('OK —', ', '.join(m['name'] for m in models))"
-else
-  echo "WARN: no response (Ollama may need to be started on YUKI)"
-fi
+# YUKI Ollama
+printf "YUKI Ollama (%s)... " "$OLLAMA_URL"
+TAGS=$(curl -sf --max-time 10 "$OLLAMA_URL/api/tags") || fail "no response"
+python3 -c "
+import sys, json
+models = json.loads(sys.argv[1]).get('models', [])
+names = ', '.join(m['name'] for m in models)
+print('OK —', names if names else '(no models)')
+" "$TAGS"
 
-echo -n "MINIPC e5 embedder (192.168.68.63:9092)... "
-curl -sf http://192.168.68.63:9092/health && echo "OK"
+# MINIPC e5 embedder
+printf "MINIPC embedder (%s)... " "$EMBEDDER_URL"
+STATUS=$(curl -sf --max-time 10 "$EMBEDDER_URL/health") || fail "no response"
+python3 -c "
+import sys, json
+d = json.loads(sys.argv[1])
+s = d.get('status', 'unknown')
+if s != 'ok': raise SystemExit(f'status={s}')
+print('OK')
+" "$STATUS"
 
-echo -n "MINIPC Qdrant (192.168.68.63:6333)... "
-curl -sf http://192.168.68.63:6333/healthz && echo "OK"
+# MINIPC Qdrant
+printf "MINIPC Qdrant (%s)... " "$QDRANT_URL"
+curl -sf --max-time 10 "$QDRANT_URL/healthz" > /dev/null || fail "no response"
+echo "OK"
 
 echo "=== All endpoints OK ==="
