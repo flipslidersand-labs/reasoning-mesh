@@ -67,6 +67,7 @@ func runEval(cfg *config.Config, args []string) {
 	outDir := fs.String("out", "results", "directory to write JSON results")
 	modelsFlag := fs.String("models", "", "comma-separated model names (default: router+knowledge from config)")
 	condFlag := fs.String("conditions", "all", "conditions to run: all | no-rag | cosine | score | compressed")
+	cooldownSec := fs.Int("cooldown", 5, "seconds to wait between requests (increase to prevent GPU thermal throttling)")
 	_ = fs.Parse(args)
 
 	cases, err := eval.LoadCases(*casesDir)
@@ -89,7 +90,8 @@ func runEval(cfg *config.Config, args []string) {
 	}
 
 	rm := buildRetrieverMap(ctx, cfg)
-	runner := eval.NewRunnerWithRetrieverMap(ollamaClient, rm, models, conditions)
+	runner := eval.NewRunnerWithRetrieverMap(ollamaClient, rm, models, conditions).
+		WithCooldown(time.Duration(*cooldownSec) * time.Second)
 	results := runner.Run(ctx, cases)
 
 	fmt.Println()

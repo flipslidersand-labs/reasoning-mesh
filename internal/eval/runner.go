@@ -22,6 +22,7 @@ type Runner struct {
 	retrievers     RetrieverMap
 	models         []string
 	conditions     []Condition
+	cooldown       time.Duration
 	feedbackSender FeedbackSender // optional; nil = no auto-feedback
 }
 
@@ -48,7 +49,14 @@ func NewRunnerWithRetrieverMap(ollamaClient *ollama.Client, rm RetrieverMap, mod
 		retrievers: rm,
 		models:     models,
 		conditions: conditions,
+		cooldown:   5 * time.Second,
 	}
+}
+
+// WithCooldown sets the inter-request cooldown to prevent GPU thermal throttling.
+func (r *Runner) WithCooldown(d time.Duration) *Runner {
+	r.cooldown = d
+	return r
 }
 
 // WithFeedbackSender attaches an optional FeedbackSender.
@@ -86,7 +94,7 @@ func (r *Runner) Run(ctx context.Context, cases []Case) []Result {
 					select {
 					case <-ctx.Done():
 						return results
-					case <-time.After(5 * time.Second):
+					case <-time.After(r.cooldown):
 					}
 				}
 			}
