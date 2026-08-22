@@ -24,10 +24,15 @@ func New(endpoint string, timeoutSec int) *Client {
 	}
 }
 
+type GenerateOptions struct {
+	NumPredict int `json:"num_predict,omitempty"`
+}
+
 type GenerateRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Stream bool   `json:"stream"`
+	Model   string          `json:"model"`
+	Prompt  string          `json:"prompt"`
+	Stream  bool            `json:"stream"`
+	Options *GenerateOptions `json:"options,omitempty"`
 }
 
 type GenerateResponse struct {
@@ -71,7 +76,7 @@ func isTransient(err error) bool {
 
 func (c *Client) GenerateFull(ctx context.Context, model, prompt string) (*GenerateResponse, error) {
 	const maxRetries = 3
-	wait := 5 * time.Second
+	wait := 15 * time.Second
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
@@ -96,7 +101,12 @@ func (c *Client) GenerateFull(ctx context.Context, model, prompt string) (*Gener
 }
 
 func (c *Client) generateOnce(ctx context.Context, model, prompt string) (*GenerateResponse, error) {
-	body, _ := json.Marshal(GenerateRequest{Model: model, Prompt: prompt, Stream: false})
+	body, _ := json.Marshal(GenerateRequest{
+		Model:   model,
+		Prompt:  prompt,
+		Stream:  false,
+		Options: &GenerateOptions{NumPredict: 600},
+	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint+"/api/generate", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
