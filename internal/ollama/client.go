@@ -128,7 +128,7 @@ func (c *Client) generateOnce(ctx context.Context, model, prompt string) (*Gener
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
 	}
-	if result.Response == "" && result.Done {
+	if result.Response == "" {
 		return nil, fmt.Errorf("ollama generate: empty response (model may be thermal-throttling)")
 	}
 	return &result, nil
