@@ -205,7 +205,9 @@ func (r *Runner) judgeAccuracy(ctx context.Context, c Case, answer string) float
 この回答は期待される内容を正しく含んでいますか？
 0.0（全く不正解）から1.0（完全正解）の数値のみ返してください。数値以外は出力しないでください。`, expected, answer)
 
-	raw, err := r.ollama.Generate(ctx, "qwen2.5:7b", judgePrompt)
+	// Use the same model as the eval target to avoid model swapping on a shared Ollama instance.
+	judgeModel := r.models[0]
+	raw, err := r.ollama.Generate(ctx, judgeModel, judgePrompt)
 	if err != nil {
 		return -1
 	}
