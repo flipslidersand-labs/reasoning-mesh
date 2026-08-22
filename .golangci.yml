@@ -1,0 +1,23 @@
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - unused
+    - misspell
+    - ineffassign
+    - errcheck
+
+linters-settings:
+  errcheck:
+    # Ignore errors from fmt.Fprint* and log.Print* — intentional
+    exclude-functions:
+      - fmt.Fprint
+      - fmt.Fprintln
+      - fmt.Fprintf
+
+issues:
+  exclude-rules:
+    # Test helpers routinely ignore encode/decode errors in stubs
+    - path: "_test\\.go"
+      linters:
+        - errcheck

@@ -203,7 +203,7 @@ func (r *Runner) buildPrompt(ctx context.Context, c Case, cond Condition) (promp
 	return promptResult{Prompt: sb.String(), KnowledgeIDs: knowledgeIDs}, nil
 }
 
-// judgeAccuracy uses qwen2.5:7b to score the answer against the expected output (0.0-1.0).
+// judgeAccuracy uses r.models[0] to score the answer against the expected output (0.0-1.0).
 // Returns -1 on error (judge unavailable), so callers can distinguish "not scored" from 0.
 func (r *Runner) judgeAccuracy(ctx context.Context, c Case, answer string) float64 {
 	expected := c.Expected.RootCause
