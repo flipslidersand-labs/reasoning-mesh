@@ -35,7 +35,10 @@ func runAsk(args []string) {
 	}
 	task := strings.Join(fs.Args(), " ")
 
-	body, _ := json.Marshal(askRequest{Task: task})
+	body, err := json.Marshal(askRequest{Task: task})
+	if err != nil {
+		log.Fatalf("ask: marshal request: %v", err)
+	}
 	req, err := http.NewRequest(http.MethodPost, *serverURL+"/v1/route", bytes.NewReader(body))
 	if err != nil {
 		log.Fatalf("ask: build request: %v", err)

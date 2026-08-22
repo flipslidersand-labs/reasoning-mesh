@@ -101,12 +101,15 @@ func (c *Client) GenerateFull(ctx context.Context, model, prompt string) (*Gener
 }
 
 func (c *Client) generateOnce(ctx context.Context, model, prompt string) (*GenerateResponse, error) {
-	body, _ := json.Marshal(GenerateRequest{
+	body, err := json.Marshal(GenerateRequest{
 		Model:   model,
 		Prompt:  prompt,
 		Stream:  false,
 		Options: &GenerateOptions{NumPredict: 600},
 	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal %T: %w", GenerateRequest{}, err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint+"/api/generate", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -142,7 +145,10 @@ func (c *Client) Generate(ctx context.Context, model, prompt string) (string, er
 }
 
 func (c *Client) Chat(ctx context.Context, model string, messages []ChatMessage) (string, error) {
-	body, _ := json.Marshal(ChatRequest{Model: model, Messages: messages, Stream: false})
+	body, err := json.Marshal(ChatRequest{Model: model, Messages: messages, Stream: false})
+	if err != nil {
+		return "", fmt.Errorf("marshal %T: %w", ChatRequest{}, err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint+"/api/chat", bytes.NewReader(body))
 	if err != nil {
 		return "", err

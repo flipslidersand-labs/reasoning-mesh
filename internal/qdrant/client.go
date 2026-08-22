@@ -48,9 +48,12 @@ type point struct {
 }
 
 func (c *Client) Upsert(ctx context.Context, collection, id string, vector []float32, payload map[string]any) error {
-	body, _ := json.Marshal(upsertRequest{
+	body, err := json.Marshal(upsertRequest{
 		Points: []point{{ID: id, Vector: vector, Payload: payload}},
 	})
+	if err != nil {
+		return fmt.Errorf("marshal %T: %w", upsertRequest{}, err)
+	}
 	url := fmt.Sprintf("%s/collections/%s/points", c.endpoint, collection)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(body))
 	if err != nil {
@@ -83,12 +86,15 @@ type SearchResult struct {
 }
 
 func (c *Client) Search(ctx context.Context, collection string, vector []float32, topK int, filter map[string]any) ([]SearchResult, error) {
-	body, _ := json.Marshal(searchRequest{
+	body, err := json.Marshal(searchRequest{
 		Vector:      vector,
 		Limit:       topK,
 		WithPayload: true,
 		Filter:      filter,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal %T: %w", searchRequest{}, err)
+	}
 	url := fmt.Sprintf("%s/collections/%s/points/search", c.endpoint, collection)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -116,10 +122,13 @@ func (c *Client) Search(ctx context.Context, collection string, vector []float32
 
 // GetByID fetches a single point by its ID.
 func (c *Client) GetByID(ctx context.Context, collection, id string) ([]SearchResult, error) {
-	body, _ := json.Marshal(map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"ids":          []string{id},
 		"with_payload": true,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal GetByID payload: %w", err)
+	}
 	url := fmt.Sprintf("%s/collections/%s/points", c.endpoint, collection)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -146,10 +155,13 @@ func (c *Client) GetByID(ctx context.Context, collection, id string) ([]SearchRe
 }
 
 func (c *Client) UpdatePayload(ctx context.Context, collection, id string, payload map[string]any) error {
-	body, _ := json.Marshal(map[string]any{
+	body, err := json.Marshal(map[string]any{
 		"payload": payload,
 		"points":  []string{id},
 	})
+	if err != nil {
+		return fmt.Errorf("marshal UpdatePayload payload: %w", err)
+	}
 	url := fmt.Sprintf("%s/collections/%s/points/payload", c.endpoint, collection)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {

@@ -42,11 +42,14 @@ func (s *HTTPFeedbackSender) Send(ctx context.Context, knowledgeIDs []string, su
 	if len(knowledgeIDs) == 0 {
 		return nil
 	}
-	body, _ := json.Marshal(feedbackPayload{
+	body, err := json.Marshal(feedbackPayload{
 		KnowledgeIDs: knowledgeIDs,
 		Outcome:      success,
 		Evaluator:    evaluator,
 	})
+	if err != nil {
+		return fmt.Errorf("marshal %T: %w", feedbackPayload{}, err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.serverURL+"/v1/feedback", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("feedback: build request: %w", err)

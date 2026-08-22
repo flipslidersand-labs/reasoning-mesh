@@ -44,7 +44,10 @@ func runIngest(args []string) {
 		log.Fatalf("ingest: build payload: %v", err)
 	}
 
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		log.Fatalf("ingest: marshal payload: %v", err)
+	}
 	req, err := http.NewRequest(http.MethodPost, *serverURL+"/v1/trigger", bytes.NewReader(body))
 	if err != nil {
 		log.Fatalf("ingest: build request: %v", err)

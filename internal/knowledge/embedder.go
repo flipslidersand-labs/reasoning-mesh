@@ -44,7 +44,10 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float32, erro
 	if col == "" {
 		col = "rm_knowledge"
 	}
-	body, _ := json.Marshal(embedRequest{Texts: texts, Collection: col})
+	body, err := json.Marshal(embedRequest{Texts: texts, Collection: col})
+	if err != nil {
+		return nil, fmt.Errorf("marshal %T: %w", embedRequest{}, err)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.endpoint+"/embed/batch", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
