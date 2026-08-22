@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -27,6 +28,9 @@ func main() {
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
 		log.Fatalf("load config: %v", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("config validation: %v", err)
 	}
 
 	if err := run(cfg); err != nil {
@@ -116,13 +120,21 @@ func run(cfg *config.Config) error {
 	// --- Bearer Token ---
 	bearerToken := os.Getenv("LLMO_TRIGGER_TOKEN")
 
+	// --- PendingStore with background Sweep (#74) ---
+	pending := server.NewPendingStore()
+
+	// --- WaitGroup for extraction goroutines (#70) ---
+	var extractWG sync.WaitGroup
+
 	// --- HTTP Server ---
 	handler := server.Build(server.Config{
 		Router:       r,
 		Extractor:    extractor,
 		ScoreUpdater: updater,
 		Retriever:    retriever,
+		Pending:      pending,
 		BearerToken:  bearerToken,
+		ExtractWG:    &extractWG,
 	})
 
 	addr := server.Addr(cfg.Server.Host, cfg.Server.Port)
@@ -139,6 +151,22 @@ func run(cfg *config.Config) error {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
+	// Periodically evict expired PendingStore entries to prevent unbounded growth.
+	sweepCtx, sweepCancel := context.WithCancel(context.Background())
+	defer sweepCancel()
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				pending.Sweep()
+			case <-sweepCtx.Done():
+				return
+			}
+		}
+	}()
+
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server: %v", err)
@@ -148,9 +176,18 @@ func run(cfg *config.Config) error {
 	<-quit
 	log.Println("shutting down...")
 
+	sweepCancel() // stop background sweep
+
 	shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return httpServer.Shutdown(shutCtx)
+	if err := httpServer.Shutdown(shutCtx); err != nil {
+		return err
+	}
+
+	// Wait for in-flight extraction goroutines to finish.
+	log.Println("waiting for in-flight extractions...")
+	extractWG.Wait()
+	return nil
 }
 
 func otelExporterName() string {

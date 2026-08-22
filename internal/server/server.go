@@ -4,6 +4,7 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/router"
@@ -16,9 +17,10 @@ type Config struct {
 	Extractor    *knowledge.Extractor
 	ScoreUpdater *knowledge.ScoreUpdater
 	Retriever    InferRetriever
-	Pending      *PendingStore // if nil, a new store is created
-	Health       HealthConfig  // Ollama + Qdrant pingers for GET /v1/health
-	BearerToken  string        // if non-empty, all non-health endpoints require Authorization: Bearer <token>
+	Pending      *PendingStore   // if nil, a new store is created
+	Health       HealthConfig    // Ollama + Qdrant pingers for GET /v1/health
+	BearerToken  string          // if non-empty, all non-health endpoints require Authorization: Bearer <token>
+	ExtractWG    *sync.WaitGroup // if non-nil, trigger extraction goroutines are tracked for graceful shutdown
 }
 
 // Build constructs the HTTP mux with all registered routes.
@@ -43,7 +45,7 @@ func Build(cfg Config) http.Handler {
 	})
 
 	// Trigger: POST /v1/trigger (CI → knowledge ingest)
-	trigger.RegisterRoutes(mux, cfg.Extractor)
+	trigger.RegisterRoutes(mux, cfg.Extractor, cfg.ExtractWG)
 
 	// Feedback: POST /v1/feedback (inference outcome → score update)
 	trigger.RegisterFeedbackRoute(mux, cfg.ScoreUpdater, pending)

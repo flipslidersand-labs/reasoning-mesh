@@ -21,7 +21,7 @@ const validPayload = `{"commit_sha":"abc123","diff":"","ci_log":""}`
 
 func TestHandler_NoToken_AcceptsAny(t *testing.T) {
 	os.Unsetenv("LLMO_TRIGGER_TOKEN")
-	h := NewHandler(nil)
+	h := NewHandler(nil, nil)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, makeRequest(validPayload, ""))
@@ -32,7 +32,7 @@ func TestHandler_NoToken_AcceptsAny(t *testing.T) {
 
 func TestHandler_WithToken_ValidBearer(t *testing.T) {
 	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
-	h := NewHandler(nil)
+	h := NewHandler(nil, nil)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, makeRequest(validPayload, "secret"))
@@ -43,7 +43,7 @@ func TestHandler_WithToken_ValidBearer(t *testing.T) {
 
 func TestHandler_WithToken_WrongToken(t *testing.T) {
 	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
-	h := NewHandler(nil)
+	h := NewHandler(nil, nil)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, makeRequest(validPayload, "wrong"))
@@ -54,7 +54,7 @@ func TestHandler_WithToken_WrongToken(t *testing.T) {
 
 func TestHandler_WithToken_MissingHeader(t *testing.T) {
 	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
-	h := NewHandler(nil)
+	h := NewHandler(nil, nil)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, makeRequest(validPayload, ""))
@@ -64,7 +64,7 @@ func TestHandler_WithToken_MissingHeader(t *testing.T) {
 }
 
 func TestHandler_MethodNotAllowed(t *testing.T) {
-	h := NewHandler(nil)
+	h := NewHandler(nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/v1/trigger", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -75,7 +75,7 @@ func TestHandler_MethodNotAllowed(t *testing.T) {
 
 func TestHandler_MissingCommitSHA(t *testing.T) {
 	os.Unsetenv("LLMO_TRIGGER_TOKEN")
-	h := NewHandler(nil)
+	h := NewHandler(nil, nil)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, makeRequest(`{"diff":""}`, ""))

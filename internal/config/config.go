@@ -1,7 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -43,6 +45,30 @@ type ScorerConfig struct {
 	Beta            float64 `yaml:"beta"`
 	FreshnessLambda float64 `yaml:"freshness_lambda"`
 	TaskBoost       float64 `yaml:"task_boost"`
+}
+
+// Validate returns an error listing all missing required fields.
+func (c *Config) Validate() error {
+	var errs []string
+	if c.Ollama.Endpoint == "" {
+		errs = append(errs, "ollama.endpoint required")
+	}
+	if c.Ollama.TimeoutSeconds <= 0 {
+		errs = append(errs, "ollama.timeout_seconds must be > 0")
+	}
+	if c.Qdrant.Endpoint == "" {
+		errs = append(errs, "qdrant.endpoint required")
+	}
+	if c.Embedder.Endpoint == "" {
+		errs = append(errs, "embedder.endpoint required")
+	}
+	if c.Server.Port == 0 {
+		errs = append(errs, "server.port required")
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("invalid config: %s", strings.Join(errs, "; "))
+	}
+	return nil
 }
 
 func Load(path string) (*Config, error) {

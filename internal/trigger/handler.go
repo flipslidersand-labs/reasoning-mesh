@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -25,19 +26,29 @@ type TriggerRequest struct {
 // Handler handles POST /v1/trigger and dispatches to the Extractor.
 type Handler struct {
 	extractor *knowledge.Extractor
-	token     string // expected Bearer token; empty = auth disabled (warn at startup)
+	token     string          // expected Bearer token; empty = auth disabled (warn at startup)
+	wg        *sync.WaitGroup // optional; tracks in-flight extraction goroutines
 }
 
 // NewHandler creates a trigger Handler.
 // The token is read from LLMO_TRIGGER_TOKEN at construction time; if unset a
 // warning is logged but the server still starts (to avoid breaking existing
 // deployments that haven't set the variable yet).
-func NewHandler(extractor *knowledge.Extractor) *Handler {
+// Pass a non-nil wg to track in-flight extraction goroutines for graceful shutdown.
+func NewHandler(extractor *knowledge.Extractor, wg *sync.WaitGroup) *Handler {
 	token := os.Getenv("LLMO_TRIGGER_TOKEN")
 	if token == "" {
 		log.Printf("WARN: LLMO_TRIGGER_TOKEN is not set — /v1/trigger accepts any request")
 	}
-	return &Handler{extractor: extractor, token: token}
+	return &Handler{extractor: extractor, token: token, wg: wg}
+}
+
+// Wait blocks until all in-flight extraction goroutines complete.
+// Only useful when wg was provided to NewHandler.
+func (h *Handler) Wait() {
+	if h.wg != nil {
+		h.wg.Wait()
+	}
 }
 
 // ServeHTTP implements http.Handler.
@@ -80,7 +91,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Run extraction asynchronously. Use Background so the context is not
 	// cancelled when the HTTP handler returns and the request context closes.
 	if h.extractor != nil {
+		if h.wg != nil {
+			h.wg.Add(1)
+		}
 		go func() {
+			if h.wg != nil {
+				defer h.wg.Done()
+			}
 			if err := h.extractor.Run(context.Background(), req.CommitSHA, req.Diff, req.CILog); err != nil {
 				log.Printf("trigger: extractor error for %s: %v", req.CommitSHA, err)
 			}
@@ -98,7 +115,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // RegisterRoutes attaches the trigger endpoint to the given mux.
-func RegisterRoutes(mux *http.ServeMux, extractor *knowledge.Extractor) {
-	h := NewHandler(extractor)
+// Pass a non-nil wg to track in-flight extraction goroutines for graceful shutdown.
+func RegisterRoutes(mux *http.ServeMux, extractor *knowledge.Extractor, wg *sync.WaitGroup) {
+	h := NewHandler(extractor, wg)
 	mux.Handle("/v1/trigger", h)
 }
