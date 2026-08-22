@@ -79,6 +79,16 @@ func (r *Runner) Run(ctx context.Context, cases []Case) []Result {
 
 				res := r.runOne(ctx, c, model, cond)
 				results = append(results, res)
+
+				// Brief cooldown between requests to prevent GPU thermal throttling
+				// on shared Ollama instances running large models (e.g. ornith:9b).
+				if done < total {
+					select {
+					case <-ctx.Done():
+						return results
+					case <-time.After(2 * time.Second):
+					}
+				}
 			}
 		}
 	}
