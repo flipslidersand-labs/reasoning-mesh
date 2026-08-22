@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -53,7 +56,46 @@ type ChatResponse struct {
 	Done    bool        `json:"done"`
 }
 
+// isTransient returns true for connection-level errors (reset, refused, EOF)
+// that are worth retrying after Ollama restarts.
+func isTransient(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "connection reset") ||
+		strings.Contains(s, "EOF") ||
+		strings.Contains(s, "read tcp")
+}
+
 func (c *Client) GenerateFull(ctx context.Context, model, prompt string) (*GenerateResponse, error) {
+	const maxRetries = 3
+	wait := 5 * time.Second
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			log.Printf("ollama: retry %d/%d after %v (err: %v)", attempt, maxRetries-1, wait, lastErr)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(wait):
+			}
+			wait *= 2
+		}
+		result, err := c.generateOnce(ctx, model, prompt)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		if !isTransient(err) {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("ollama generate: %w (after %d retries)", errors.Unwrap(lastErr), maxRetries)
+}
+
+func (c *Client) generateOnce(ctx context.Context, model, prompt string) (*GenerateResponse, error) {
 	body, _ := json.Marshal(GenerateRequest{Model: model, Prompt: prompt, Stream: false})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint+"/api/generate", bytes.NewReader(body))
 	if err != nil {
