@@ -234,7 +234,7 @@ func (r *Runner) judgeAccuracy(ctx context.Context, c Case, answer string) float
 	return score
 }
 
-// compressKnowledge uses qwen2.5:7b to summarise retrieved items into a single paragraph.
+// compressKnowledge summarises retrieved items into a single paragraph using the eval model.
 func (r *Runner) compressKnowledge(ctx context.Context, items []KnowledgeItem) (string, error) {
 	var raw strings.Builder
 	for i, item := range items {
@@ -244,5 +244,5 @@ func (r *Runner) compressKnowledge(ctx context.Context, items []KnowledgeItem) (
 		"以下のナレッジを1段落（200字以内）に要約してください。重要な技術キーワードを保持すること。\n\n%s",
 		raw.String(),
 	)
-	return r.ollama.Generate(ctx, "qwen2.5:7b", compressPrompt)
+	return r.ollama.Generate(ctx, r.models[0], compressPrompt)
 }
