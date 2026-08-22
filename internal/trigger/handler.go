@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -23,11 +25,19 @@ type TriggerRequest struct {
 // Handler handles POST /v1/trigger and dispatches to the Extractor.
 type Handler struct {
 	extractor *knowledge.Extractor
+	token     string // expected Bearer token; empty = auth disabled (warn at startup)
 }
 
 // NewHandler creates a trigger Handler.
+// The token is read from LLMO_TRIGGER_TOKEN at construction time; if unset a
+// warning is logged but the server still starts (to avoid breaking existing
+// deployments that haven't set the variable yet).
 func NewHandler(extractor *knowledge.Extractor) *Handler {
-	return &Handler{extractor: extractor}
+	token := os.Getenv("LLMO_TRIGGER_TOKEN")
+	if token == "" {
+		log.Printf("WARN: LLMO_TRIGGER_TOKEN is not set — /v1/trigger accepts any request")
+	}
+	return &Handler{extractor: extractor, token: token}
 }
 
 // ServeHTTP implements http.Handler.
@@ -35,6 +45,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	// Validate Bearer token when configured.
+	if h.token != "" {
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != h.token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	_, span := telemetry.Tracer("trigger/ingest").Start(r.Context(), "trigger")
@@ -70,10 +89,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	_ = json.NewEncoder(w).Encode(map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"status":     "accepted",
 		"commit_sha": req.CommitSHA,
-	})
+	}); err != nil {
+		log.Printf("trigger: encode response: %v", err)
+	}
 }
 
 // RegisterRoutes attaches the trigger endpoint to the given mux.

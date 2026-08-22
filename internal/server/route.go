@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -60,12 +61,14 @@ func (h *routeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(RouteResponse{
+	if err := json.NewEncoder(w).Encode(RouteResponse{
 		Answer:       resp.Text,
 		Model:        resp.Model,
 		PromptTokens: resp.PromptTokens,
 		TotalTokens:  resp.TotalTokens,
-	})
+	}); err != nil {
+		log.Printf("route: encode response: %v", err)
+	}
 }
 
 // inferTaskType selects a TaskType from the request. Currently rule-based;
@@ -96,5 +99,7 @@ func containsAny(s string, subs ...string) bool {
 func writeRouteErr(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(RouteResponse{Error: msg})
+	if err := json.NewEncoder(w).Encode(RouteResponse{Error: msg}); err != nil {
+		log.Printf("route: encode error response: %v", err)
+	}
 }

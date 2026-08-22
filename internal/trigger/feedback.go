@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -88,10 +89,12 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	if err := json.NewEncoder(w).Encode(map[string]any{
 		"status": "accepted",
 		"count":  len(ids),
-	})
+	}); err != nil {
+		log.Printf("feedback: encode response: %v", err)
+	}
 }
 
 // RegisterFeedbackRoute attaches the feedback endpoint to the mux.

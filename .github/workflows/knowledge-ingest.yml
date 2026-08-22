@@ -18,7 +18,15 @@ jobs:
 
       - name: Run tests
         id: tests
-        run: go test ./...
+        run: go test ./... 2>&1 | tee /tmp/test.log; exit ${PIPESTATUS[0]}
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: /tmp/test.log
+          retention-days: 7
 
   ingest:
     needs: test
@@ -29,16 +37,23 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Download test log
+        uses: actions/download-artifact@v4
+        with:
+          name: test-log
+          path: /tmp
+
       - name: Build diff + CI log payload
         id: payload
         run: |
           DIFF=$(git diff HEAD~1 HEAD -- '*.go' | head -c 32768)
           COMMIT_SHA=${{ github.sha }}
+          CI_LOG=$(tail -c 8192 /tmp/test.log 2>/dev/null || echo "")
           # Emit as escaped JSON string via file to avoid shell quoting issues
           jq -n \
             --arg sha "$COMMIT_SHA" \
             --arg diff "$DIFF" \
-            --arg ci_log "" \
+            --arg ci_log "$CI_LOG" \
             '{"commit_sha": $sha, "diff": $diff, "ci_log": $ci_log}' > /tmp/trigger_payload.json
           echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
 

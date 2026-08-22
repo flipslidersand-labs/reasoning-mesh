@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -130,18 +131,22 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	)
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(InferResponse{
+	if err := json.NewEncoder(w).Encode(InferResponse{
 		RequestID:    requestID,
 		Answer:       resp.Text,
 		Model:        resp.Model,
 		PromptTokens: resp.PromptTokens,
 		TotalTokens:  resp.TotalTokens,
 		KnowledgeIDs: knowledgeIDs,
-	})
+	}); err != nil {
+		log.Printf("infer: encode response: %v", err)
+	}
 }
 
 func writeErr(w http.ResponseWriter, msg string, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(InferResponse{Error: msg})
+	if err := json.NewEncoder(w).Encode(InferResponse{Error: msg}); err != nil {
+		log.Printf("infer: encode error response: %v", err)
+	}
 }

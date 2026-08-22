@@ -1,0 +1,85 @@
+package trigger
+
+import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+)
+
+func makeRequest(body string, token string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/v1/trigger", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return req
+}
+
+const validPayload = `{"commit_sha":"abc123","diff":"","ci_log":""}`
+
+func TestHandler_NoToken_AcceptsAny(t *testing.T) {
+	os.Unsetenv("LLMO_TRIGGER_TOKEN")
+	h := NewHandler(nil)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, makeRequest(validPayload, ""))
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("want 202, got %d", rec.Code)
+	}
+}
+
+func TestHandler_WithToken_ValidBearer(t *testing.T) {
+	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
+	h := NewHandler(nil)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, makeRequest(validPayload, "secret"))
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("want 202, got %d", rec.Code)
+	}
+}
+
+func TestHandler_WithToken_WrongToken(t *testing.T) {
+	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
+	h := NewHandler(nil)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, makeRequest(validPayload, "wrong"))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("want 401, got %d", rec.Code)
+	}
+}
+
+func TestHandler_WithToken_MissingHeader(t *testing.T) {
+	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
+	h := NewHandler(nil)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, makeRequest(validPayload, ""))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("want 401, got %d", rec.Code)
+	}
+}
+
+func TestHandler_MethodNotAllowed(t *testing.T) {
+	h := NewHandler(nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/trigger", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("want 405, got %d", rec.Code)
+	}
+}
+
+func TestHandler_MissingCommitSHA(t *testing.T) {
+	os.Unsetenv("LLMO_TRIGGER_TOKEN")
+	h := NewHandler(nil)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, makeRequest(`{"diff":""}`, ""))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d", rec.Code)
+	}
+}
