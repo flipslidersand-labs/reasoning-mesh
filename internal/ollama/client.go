@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -98,7 +97,7 @@ func (c *Client) GenerateFull(ctx context.Context, model, prompt string) (*Gener
 			return nil, err
 		}
 	}
-	return nil, fmt.Errorf("ollama generate: %w (after %d retries)", errors.Unwrap(lastErr), maxRetries)
+	return nil, fmt.Errorf("ollama generate: %w (after %d retries)", lastErr, maxRetries)
 }
 
 func (c *Client) generateOnce(ctx context.Context, model, prompt string) (*GenerateResponse, error) {
