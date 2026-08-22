@@ -71,12 +71,13 @@ func isTransient(err error) bool {
 	return strings.Contains(s, "connection refused") ||
 		strings.Contains(s, "connection reset") ||
 		strings.Contains(s, "EOF") ||
-		strings.Contains(s, "read tcp")
+		strings.Contains(s, "read tcp") ||
+		strings.Contains(s, "empty response")
 }
 
 func (c *Client) GenerateFull(ctx context.Context, model, prompt string) (*GenerateResponse, error) {
 	const maxRetries = 3
-	wait := 15 * time.Second
+	wait := 5 * time.Second
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
@@ -126,6 +127,9 @@ func (c *Client) generateOnce(ctx context.Context, model, prompt string) (*Gener
 	var result GenerateResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
+	}
+	if result.Response == "" && result.Done {
+		return nil, fmt.Errorf("ollama generate: empty response (model may be thermal-throttling)")
 	}
 	return &result, nil
 }

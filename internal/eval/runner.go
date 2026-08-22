@@ -86,7 +86,7 @@ func (r *Runner) Run(ctx context.Context, cases []Case) []Result {
 					select {
 					case <-ctx.Done():
 						return results
-					case <-time.After(2 * time.Second):
+					case <-time.After(5 * time.Second):
 					}
 				}
 			}
