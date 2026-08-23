@@ -65,6 +65,12 @@ func (c *Config) Validate() error {
 	if c.Server.Port == 0 {
 		errs = append(errs, "server.port required")
 	}
+	if c.Ollama.Models["router"] == "" {
+		errs = append(errs, "ollama.models.router required")
+	}
+	if c.Ollama.Models["knowledge"] == "" {
+		errs = append(errs, "ollama.models.knowledge required")
+	}
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid config: %s", strings.Join(errs, "; "))
 	}
