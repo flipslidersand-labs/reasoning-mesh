@@ -190,6 +190,60 @@ func TestUpdatePayload_NonOK(t *testing.T) {
 	}
 }
 
+// --- EnsureCollection ---
+
+func TestEnsureCollection_AlreadyExists(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"name": "col"}})
+			return
+		}
+		// PUT should not be called
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+
+	if err := c.EnsureCollection(context.Background(), "col", 384); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestEnsureCollection_Creates(t *testing.T) {
+	var putCalled bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Method == http.MethodPut {
+			putCalled = true
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"result": true})
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+
+	if err := c.EnsureCollection(context.Background(), "col", 384); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !putCalled {
+		t.Error("expected PUT /collections/col to be called")
+	}
+}
+
+func TestEnsureCollection_UnexpectedStatus(t *testing.T) {
+	srv := qdrantError(t, http.StatusForbidden)
+	c := New(srv.URL)
+	if err := c.EnsureCollection(context.Background(), "col", 384); err == nil {
+		t.Fatal("expected error for 403")
+	}
+}
+
 func TestUpdatePayload_SendsPointsAndPayload(t *testing.T) {
 	var body map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

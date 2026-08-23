@@ -69,6 +69,13 @@ func run(cfg *config.Config) error {
 	}
 	log.Printf("qdrant OK (%s)", cfg.Qdrant.Endpoint)
 
+	// Ensure required Qdrant collections exist (auto-create if missing).
+	knowledgeColName := cfg.Qdrant.Collections["knowledge"]
+	if err := qdrantClient.EnsureCollection(ctx, knowledgeColName, cfg.Embedder.Dim); err != nil {
+		return fmt.Errorf("qdrant ensure collection %q: %w", knowledgeColName, err)
+	}
+	log.Printf("qdrant collection %q ready", knowledgeColName)
+
 	// --- Embedder ---
 	embedder := knowledge.NewEmbedderWithAuth(cfg.Embedder.Endpoint, cfg.Embedder.APIKey, cfg.Embedder.Collection)
 

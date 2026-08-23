@@ -154,6 +154,52 @@ func (c *Client) GetByID(ctx context.Context, collection, id string) ([]SearchRe
 	return result.Result, nil
 }
 
+// EnsureCollection checks whether the named collection exists and creates it
+// if not (dim=vectorDim, distance=Cosine). Safe to call on every startup.
+func (c *Client) EnsureCollection(ctx context.Context, collection string, vectorDim int) error {
+	url := fmt.Sprintf("%s/collections/%s", c.endpoint, collection)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		return nil // already exists
+	}
+	if resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("qdrant collection check: status %d", resp.StatusCode)
+	}
+
+	// Create the collection
+	body, err := json.Marshal(map[string]any{
+		"vectors": map[string]any{
+			"size":     vectorDim,
+			"distance": "Cosine",
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("marshal create collection: %w", err)
+	}
+	req, err = http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err = c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("qdrant create collection: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (c *Client) UpdatePayload(ctx context.Context, collection, id string, payload map[string]any) error {
 	body, err := json.Marshal(map[string]any{
 		"payload": payload,
