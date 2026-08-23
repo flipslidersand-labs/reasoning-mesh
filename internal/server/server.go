@@ -58,10 +58,11 @@ func Build(cfg Config) http.Handler {
 		pending:   pending,
 	})
 
+	var handler http.Handler = mux
 	if cfg.BearerToken != "" {
-		return bearerAuth(cfg.BearerToken, mux)
+		handler = bearerAuth(cfg.BearerToken, mux)
 	}
-	return mux
+	return logRequests(handler)
 }
 
 // Addr returns the listen address from host and port.
