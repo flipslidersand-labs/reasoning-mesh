@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
 	"github.com/flipslidersand/reasoning-mesh/internal/router"
 	"github.com/flipslidersand/reasoning-mesh/internal/server"
 )
@@ -153,19 +152,33 @@ func TestRoute_MethodNotAllowed(t *testing.T) {
 	}
 }
 
-// inferTaskType routing smoke tests via the HTTP layer
+// inferTaskType routing tests — verify both status and the selected model name.
 func TestRoute_TaskTypeInference(t *testing.T) {
 	cases := []struct {
-		task     string
-		wantType eval.TaskType
+		task      string
+		wantModel string // adapter Name() that should handle this task
 	}{
-		{"このCIエラーの原因を調べて", eval.TaskDebugging},
-		{"テストを書いて", eval.TaskTesting},
-		{"アーキテクチャを設計して", eval.TaskArchitecture},
-		{"実装して", eval.TaskImplementation},
+		// English keywords
+		{"fix this bug", "debug-adapter"},
+		{"write tests for this", "test-adapter"},
+		{"design the architecture", "arch-adapter"},
+		{"implement the feature", "impl-adapter"},
+		// Japanese keywords (#87)
+		{"このCIエラーの原因を調べて", "debug-adapter"},
+		{"テストを書いて", "test-adapter"},
+		{"アーキテクチャを設計して", "arch-adapter"},
+		{"実装して", "impl-adapter"},
+		{"バグを修正して", "debug-adapter"},
+		{"スキーマを設計して", "arch-adapter"},
 	}
-	stub := &stubAdapter{name: "stub"}
-	r := router.New(router.Config{Default: stub})
+
+	r := router.New(router.Config{
+		Debugging:      &stubAdapter{name: "debug-adapter"},
+		Testing:        &stubAdapter{name: "test-adapter"},
+		Architecture:   &stubAdapter{name: "arch-adapter"},
+		Implementation: &stubAdapter{name: "impl-adapter"},
+		Default:        &stubAdapter{name: "impl-adapter"},
+	})
 	srv := server.Build(server.Config{Router: r})
 
 	for _, tc := range cases {
@@ -176,6 +189,12 @@ func TestRoute_TaskTypeInference(t *testing.T) {
 		srv.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Errorf("%q: status %d", tc.task, rec.Code)
+			continue
+		}
+		var resp server.RouteResponse
+		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+		if resp.Model != tc.wantModel {
+			t.Errorf("%q: want model %q, got %q", tc.task, tc.wantModel, resp.Model)
 		}
 	}
 }

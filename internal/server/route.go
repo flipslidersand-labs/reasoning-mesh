@@ -76,11 +76,17 @@ func (h *routeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func inferTaskType(req RouteRequest) eval.TaskType {
 	task := strings.ToLower(req.Task)
 	switch {
-	case containsAny(task, "debug", "fix", "error", "bug", "fail"):
+	case containsAny(task,
+		"debug", "fix", "error", "bug", "fail",
+		"エラー", "バグ", "修正", "失敗", "デバッグ"):
 		return eval.TaskDebugging
-	case containsAny(task, "test", "spec", "assert"):
+	case containsAny(task,
+		"test", "spec", "assert",
+		"テスト", "仕様"):
 		return eval.TaskTesting
-	case containsAny(task, "architect", "design", "structure", "schema"):
+	case containsAny(task,
+		"architect", "design", "structure", "schema",
+		"アーキテクチャ", "設計", "構造", "スキーマ"):
 		return eval.TaskArchitecture
 	default:
 		return eval.TaskImplementation
