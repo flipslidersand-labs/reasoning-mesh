@@ -73,6 +73,55 @@ func TestUpsert_NonOK(t *testing.T) {
 	}
 }
 
+// --- BulkUpsert ---
+
+func TestBulkUpsert_OK(t *testing.T) {
+	putCount := 0
+	var capturedBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			putCount++
+			_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"result": "ok"})
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+
+	points := []UpsertPoint{
+		{ID: "aaa", Vectors: []float32{0.1, 0.2}, Payload: map[string]any{"k": "v1"}},
+		{ID: "bbb", Vectors: []float32{0.3, 0.4}, Payload: map[string]any{"k": "v2"}},
+	}
+	if err := c.BulkUpsert(context.Background(), "col", points); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if putCount != 1 {
+		t.Errorf("expected exactly 1 PUT call, got %d", putCount)
+	}
+	pts, ok := capturedBody["points"].([]any)
+	if !ok || len(pts) != 2 {
+		t.Errorf("expected 2 points in request body, got %v", capturedBody["points"])
+	}
+}
+
+func TestBulkUpsert_EmptyPoints(t *testing.T) {
+	putCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		putCount++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+
+	if err := c.BulkUpsert(context.Background(), "col", nil); err != nil {
+		t.Fatalf("unexpected error for empty points: %v", err)
+	}
+	if putCount != 0 {
+		t.Errorf("expected no HTTP calls for empty slice, got %d", putCount)
+	}
+}
+
 // --- Search ---
 
 func TestSearch_WithResults(t *testing.T) {

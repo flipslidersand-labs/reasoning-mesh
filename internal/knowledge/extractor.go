@@ -53,7 +53,7 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 		return nil
 	}
 
-	upserted := 0
+	var pts []qdrant.UpsertPoint
 	for _, chunk := range chunks {
 		sc, err := e.structurizer.Structurize(ctx, chunk)
 		if err != nil {
@@ -88,14 +88,15 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 			"last_used_at":  now.Format(time.RFC3339),
 		}
 
-		if err := e.qdrant.Upsert(ctx, e.collection, id, vectors[0], payload); err != nil {
-			log.Printf("extractor: upsert %s error: %v", id, err)
-			span.SetStatus(codes.Error, err.Error())
-			continue
-		}
-		log.Printf("extractor: upserted %s (task=%s lang=%s)", id, sc.TaskType, sc.Language)
-		upserted++
+		pts = append(pts, qdrant.UpsertPoint{ID: id, Vectors: vectors[0], Payload: payload})
+		log.Printf("extractor: queued %s (task=%s lang=%s)", id, sc.TaskType, sc.Language)
 	}
+
+	if err := e.qdrant.BulkUpsert(ctx, e.collection, pts); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return fmt.Errorf("extractor: bulk upsert: %w", err)
+	}
+	upserted := len(pts)
 	span.SetAttributes(attribute.Int("upserted_count", upserted))
 	return nil
 }

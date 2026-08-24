@@ -47,6 +47,46 @@ type point struct {
 	Payload map[string]any `json:"payload"`
 }
 
+// UpsertPoint holds the data for a single point in a BulkUpsert call.
+type UpsertPoint struct {
+	ID      string
+	Vectors []float32
+	Payload map[string]any
+}
+
+// BulkUpsert sends all points in a single PUT /collections/{name}/points request,
+// eliminating the N+1 HTTP overhead of calling Upsert in a loop.
+// If points is empty, it returns nil immediately.
+func (c *Client) BulkUpsert(ctx context.Context, collection string, points []UpsertPoint) error {
+	if len(points) == 0 {
+		return nil
+	}
+	pts := make([]point, len(points))
+	for i, p := range points {
+		pts[i] = point{ID: p.ID, Vector: p.Vectors, Payload: p.Payload}
+	}
+	body, err := json.Marshal(upsertRequest{Points: pts})
+	if err != nil {
+		return fmt.Errorf("marshal %T: %w", upsertRequest{}, err)
+	}
+	url := fmt.Sprintf("%s/collections/%s/points", c.endpoint, collection)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("qdrant bulk upsert: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (c *Client) Upsert(ctx context.Context, collection, id string, vector []float32, payload map[string]any) error {
 	body, err := json.Marshal(upsertRequest{
 		Points: []point{{ID: id, Vector: vector, Payload: payload}},
