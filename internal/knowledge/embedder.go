@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Embedder calls the MINIPC e5 embedding service.
+// Embedder calls the e5 embedding service.
 type Embedder struct {
 	endpoint   string
 	apiKey     string
