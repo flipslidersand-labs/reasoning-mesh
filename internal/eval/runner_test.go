@@ -305,3 +305,102 @@ func (c *capturingRetriever) Retrieve(ctx context.Context, q string, tt TaskType
 	c.onRetrieve()
 	return c.inner.Retrieve(ctx, q, tt, k)
 }
+
+// --- compressKnowledge additional tests ---
+
+// TestRunner_CondCompressed_SummaryAppearsInPrompt verifies that the compressed
+// summary returned by the first Ollama call is forwarded to the main generate call
+// as part of the augmented prompt (not the raw item list).
+func TestRunner_CondCompressed_SummaryAppearsInPrompt(t *testing.T) {
+	const compressSummary = "UNIQUE_SUMMARY_TOKEN"
+
+	var capturedPrompts []string
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if p, ok := body["prompt"].(string); ok {
+			mu.Lock()
+			capturedPrompts = append(capturedPrompts, p)
+			mu.Unlock()
+		}
+		// First call (compress) returns the summary; subsequent calls return a generic answer.
+		resp := compressSummary
+		if len(capturedPrompts) > 1 {
+			resp = "final answer"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"response": resp, "done": true,
+			"prompt_eval_count": 10, "eval_count": 5,
+		})
+	}))
+	defer srv.Close()
+
+	client := ollama.New(srv.URL, 10)
+	retriever := stubRetriever{items: []KnowledgeItem{{ID: "k1", Content: "chunk1"}}}
+	rm := RetrieverMap{CondCompressed: retriever}
+	runner := NewRunnerWithRetrieverMap(client, rm, []string{"m"}, []Condition{CondCompressed}).
+		WithCooldown(0)
+
+	results := runner.Run(context.Background(), []Case{makeCase("c1", nil)})
+	if results[0].Error != "" {
+		t.Fatalf("unexpected error: %s", results[0].Error)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(capturedPrompts) < 2 {
+		t.Fatalf("expected at least 2 Ollama calls, got %d", len(capturedPrompts))
+	}
+	// The second call (main generate) must contain the summary text.
+	if !containsString(capturedPrompts[1], compressSummary) {
+		t.Errorf("main generate prompt does not contain the compressed summary.\nprompt: %s", capturedPrompts[1])
+	}
+}
+
+// TestRunner_CondCompressed_FallbackOnCompressError verifies that when the
+// compress step errors (server returns 500), the runner falls back to listing
+// the raw knowledge items instead of failing the whole case.
+func TestRunner_CondCompressed_FallbackOnCompressError(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			// First call = compress → simulate error
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		// Subsequent calls (main generate, judge) succeed.
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"response": "fallback answer", "done": true,
+			"prompt_eval_count": 5, "eval_count": 5,
+		})
+	}))
+	defer srv.Close()
+
+	client := ollama.New(srv.URL, 10)
+	retriever := stubRetriever{items: []KnowledgeItem{{ID: "k1", Content: "raw chunk"}}}
+	rm := RetrieverMap{CondCompressed: retriever}
+	runner := NewRunnerWithRetrieverMap(client, rm, []string{"m"}, []Condition{CondCompressed}).
+		WithCooldown(0)
+
+	results := runner.Run(context.Background(), []Case{makeCase("c1", nil)})
+	// The case should NOT be marked as error — fallback keeps it alive.
+	if results[0].Error != "" {
+		t.Errorf("expected no error on compress failure (fallback active), got: %s", results[0].Error)
+	}
+}
+
+func containsString(s, sub string) bool {
+	return len(sub) > 0 && len(s) >= len(sub) &&
+		func() bool {
+			for i := 0; i <= len(s)-len(sub); i++ {
+				if s[i:i+len(sub)] == sub {
+					return true
+				}
+			}
+			return false
+		}()
+}
