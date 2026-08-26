@@ -73,6 +73,49 @@ func TestUpsert_NonOK(t *testing.T) {
 	}
 }
 
+// --- BulkUpsert ---
+
+func TestBulkUpsert_OK(t *testing.T) {
+	var capturedBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"result": "ok"})
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+
+	pts := []UpsertPoint{
+		{ID: "id-1", Vector: []float32{0.1, 0.2}, Payload: map[string]any{"k": "v1"}},
+		{ID: "id-2", Vector: []float32{0.3, 0.4}, Payload: map[string]any{"k": "v2"}},
+	}
+	if err := c.BulkUpsert(context.Background(), "col", pts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	points, _ := capturedBody["points"].([]any)
+	if len(points) != 2 {
+		t.Errorf("expected 2 points in request, got %d", len(points))
+	}
+}
+
+func TestBulkUpsert_Empty_IsNoop(t *testing.T) {
+	// No server needed — empty slice must return nil without making any HTTP call.
+	c := New("http://127.0.0.1:19998")
+	if err := c.BulkUpsert(context.Background(), "col", nil); err != nil {
+		t.Fatalf("empty BulkUpsert should be a no-op, got: %v", err)
+	}
+}
+
+func TestBulkUpsert_NonOK(t *testing.T) {
+	srv := qdrantError(t, http.StatusUnprocessableEntity)
+	c := New(srv.URL)
+	pts := []UpsertPoint{{ID: "id-1", Vector: []float32{0.1}, Payload: nil}}
+	if err := c.BulkUpsert(context.Background(), "col", pts); err == nil {
+		t.Fatal("expected error for 422")
+	}
+}
+
 // --- Search ---
 
 func TestSearch_WithResults(t *testing.T) {

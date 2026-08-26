@@ -53,7 +53,8 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 		return nil
 	}
 
-	upserted := 0
+	var pts []qdrant.UpsertPoint
+	now := time.Now().UTC()
 	for _, chunk := range chunks {
 		sc, err := e.structurizer.Structurize(ctx, chunk)
 		if err != nil {
@@ -72,31 +73,33 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 			continue
 		}
 
-		now := time.Now().UTC()
-		payload := map[string]any{
-			"content":       sc.Content,
-			"task_type":     string(toQdrantTaskType(sc.TaskType)),
-			"language":      sc.Language,
-			"framework":     sc.Framework,
-			"source":        "ci",
-			"commit_sha":    commitSHA,
-			"usage_count":   0,
-			"success_count": 0,
-			"success_rate":  0.5,
-			"tags":          sc.Tags,
-			"created_at":    now.Format(time.RFC3339),
-			"last_used_at":  now.Format(time.RFC3339),
-		}
-
-		if err := e.qdrant.Upsert(ctx, e.collection, id, vectors[0], payload); err != nil {
-			log.Printf("extractor: upsert %s error: %v", id, err)
-			span.SetStatus(codes.Error, err.Error())
-			continue
-		}
-		log.Printf("extractor: upserted %s (task=%s lang=%s)", id, sc.TaskType, sc.Language)
-		upserted++
+		pts = append(pts, qdrant.UpsertPoint{
+			ID:     id,
+			Vector: vectors[0],
+			Payload: map[string]any{
+				"content":       sc.Content,
+				"task_type":     string(toQdrantTaskType(sc.TaskType)),
+				"language":      sc.Language,
+				"framework":     sc.Framework,
+				"source":        "ci",
+				"commit_sha":    commitSHA,
+				"usage_count":   0,
+				"success_count": 0,
+				"success_rate":  0.5,
+				"tags":          sc.Tags,
+				"created_at":    now.Format(time.RFC3339),
+				"last_used_at":  now.Format(time.RFC3339),
+			},
+		})
 	}
-	span.SetAttributes(attribute.Int("upserted_count", upserted))
+	if len(pts) > 0 {
+		if err := e.qdrant.BulkUpsert(ctx, e.collection, pts); err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			return fmt.Errorf("extractor: bulk upsert: %w", err)
+		}
+	}
+	log.Printf("extractor: bulk upserted %d points (commit=%s)", len(pts), commitSHA)
+	span.SetAttributes(attribute.Int("upserted_count", len(pts)))
 	return nil
 }
 

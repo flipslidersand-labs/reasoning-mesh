@@ -37,6 +37,13 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
+// UpsertPoint is a single point for BulkUpsert.
+type UpsertPoint struct {
+	ID      string         `json:"id"`
+	Vector  []float32      `json:"vector"`
+	Payload map[string]any `json:"payload"`
+}
+
 type upsertRequest struct {
 	Points []point `json:"points"`
 }
@@ -45,6 +52,36 @@ type point struct {
 	ID      string         `json:"id"`
 	Vector  []float32      `json:"vector"`
 	Payload map[string]any `json:"payload"`
+}
+
+// BulkUpsert writes multiple points in a single HTTP PUT request.
+func (c *Client) BulkUpsert(ctx context.Context, collection string, pts []UpsertPoint) error {
+	if len(pts) == 0 {
+		return nil
+	}
+	raw := make([]point, len(pts))
+	for i, p := range pts {
+		raw[i] = point{ID: p.ID, Vector: p.Vector, Payload: p.Payload}
+	}
+	body, err := json.Marshal(upsertRequest{Points: raw})
+	if err != nil {
+		return fmt.Errorf("marshal BulkUpsert: %w", err)
+	}
+	url := fmt.Sprintf("%s/collections/%s/points", c.endpoint, collection)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("qdrant bulk upsert: status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func (c *Client) Upsert(ctx context.Context, collection, id string, vector []float32, payload map[string]any) error {
