@@ -27,6 +27,16 @@ jobs:
         id: tests
         run: go test ./... 2>&1 | tee /tmp/test.log; exit ${PIPESTATUS[0]}
 
+      - name: Check coverage threshold
+        run: |
+          go test ./... -coverprofile=cover.out -count=1 2>/dev/null
+          TOTAL=$(go tool cover -func=cover.out | awk '/^total:/{gsub(/%/,"",$3); print int($3)}')
+          echo "Total coverage: ${TOTAL}%"
+          if [ "${TOTAL}" -lt 30 ]; then
+            echo "::error::Coverage ${TOTAL}% is below minimum threshold of 30%"
+            exit 1
+          fi
+
       - name: Upload test log
         if: always()
         uses: actions/upload-artifact@v4
