@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -46,6 +47,9 @@ type inferHandler struct {
 	pending   *PendingStore
 }
 
+// maxInferBodyBytes is the maximum allowed request body size for /v1/infer and /v1/route.
+const maxInferBodyBytes = 1 << 20 // 1 MiB
+
 func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -55,9 +59,16 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, span := telemetry.Tracer("server/infer").Start(r.Context(), "infer")
 	defer span.End()
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxInferBodyBytes)
+
 	var req InferRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		span.SetStatus(codes.Error, err.Error())
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeErr(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		writeErr(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}

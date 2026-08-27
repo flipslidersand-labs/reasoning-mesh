@@ -149,3 +149,21 @@ func TestInfer_BearerAuth(t *testing.T) {
 		t.Fatalf("want 200 with token, got %d", rec.Code)
 	}
 }
+
+func TestInfer_BodyTooLarge(t *testing.T) {
+	srv := buildInferServer(nil, "")
+
+	// Build a payload larger than 1 MiB.
+	large := make([]byte, (1<<20)+1)
+	for i := range large {
+		large[i] = 'x'
+	}
+	body := `{"prompt":"` + string(large) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/infer", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("want 413, got %d", rec.Code)
+	}
+}

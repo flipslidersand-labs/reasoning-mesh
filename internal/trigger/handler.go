@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -15,6 +16,10 @@ import (
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
 )
+
+// maxTriggerBodyBytes is the maximum allowed request body size for /v1/trigger.
+// diff and ci_log can be large (monorepo diffs, long build logs) but must be bounded.
+const maxTriggerBodyBytes = 16 << 20 // 16 MiB
 
 // TriggerRequest is the JSON body sent by CI on a green build.
 type TriggerRequest struct {
@@ -69,9 +74,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, span := telemetry.Tracer("trigger/ingest").Start(r.Context(), "trigger")
 	defer span.End()
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxTriggerBodyBytes)
+
 	var req TriggerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		span.SetStatus(codes.Error, err.Error())
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}

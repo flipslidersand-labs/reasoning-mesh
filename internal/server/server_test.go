@@ -239,3 +239,21 @@ func TestBearerAuth_HealthExempt(t *testing.T) {
 		t.Fatalf("/v1/health should be auth-exempt, got %d", rec.Code)
 	}
 }
+
+func TestRoute_BodyTooLarge(t *testing.T) {
+	srv := buildTestServer("")
+
+	// Build a payload larger than 1 MiB.
+	large := make([]byte, (1<<20)+1)
+	for i := range large {
+		large[i] = 'x'
+	}
+	body := `{"task":"` + string(large) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/route", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("want 413, got %d", rec.Code)
+	}
+}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -12,8 +13,8 @@ import (
 
 // RouteRequest is the JSON body for POST /v1/route.
 type RouteRequest struct {
-	Task    string         `json:"task"`
-	Context *RouteContext  `json:"context,omitempty"`
+	Task    string        `json:"task"`
+	Context *RouteContext `json:"context,omitempty"`
 }
 
 // RouteContext carries optional metadata about the calling repo/environment.
@@ -42,8 +43,15 @@ func (h *routeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxInferBodyBytes)
+
 	var req RouteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeRouteErr(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		writeRouteErr(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
