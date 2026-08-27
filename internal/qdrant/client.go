@@ -177,15 +177,23 @@ func (c *Client) Search(ctx context.Context, collection string, vector []float32
 
 // GetByID fetches a single point by its ID.
 func (c *Client) GetByID(ctx context.Context, collection, id string) ([]SearchResult, error) {
+	return c.GetByIDs(ctx, collection, []string{id})
+}
+
+// GetByIDs fetches multiple points by their IDs in a single HTTP request.
+func (c *Client) GetByIDs(ctx context.Context, collection string, ids []string) ([]SearchResult, error) {
 	if err := validate.CollectionName(collection); err != nil {
 		return nil, err
 	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
 	body, err := json.Marshal(map[string]any{
-		"ids":          []string{id},
+		"ids":          ids,
 		"with_payload": true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("marshal GetByID payload: %w", err)
+		return nil, fmt.Errorf("marshal GetByIDs payload: %w", err)
 	}
 	url := fmt.Sprintf("%s/collections/%s/points", c.endpoint, collection)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))

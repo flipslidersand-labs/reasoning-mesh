@@ -82,31 +82,55 @@ func (u *ScoreUpdater) apply(ctx context.Context, ev FeedbackEvent) {
 	if u.qdrant == nil {
 		return
 	}
+	if len(ev.KnowledgeIDs) == 0 {
+		return
+	}
+
+	// Batch-fetch all payloads in a single RPC instead of N serial GetByID calls.
+	results, err := u.qdrant.GetByIDs(ctx, u.collection, ev.KnowledgeIDs)
+	if err != nil {
+		log.Printf("score_updater: batch get failed: %v", err)
+		return
+	}
+
+	// Build a lookup map from ID to payload.
+	payloadByID := make(map[string]map[string]any, len(results))
+	for _, r := range results {
+		payloadByID[r.ID] = r.Payload
+	}
+
+	now := time.Now().UTC()
+
+	// Parallelize UpdatePayload calls — each point has a distinct new payload so
+	// we cannot collapse them into a single batch write, but concurrent RPCs
+	// cut wall-clock time from O(N) serial to O(1) parallel.
+	var wg sync.WaitGroup
 	for _, id := range ev.KnowledgeIDs {
-		// Fetch current payload to read existing counts.
-		results, err := u.qdrant.GetByID(ctx, u.collection, id)
-		if err != nil || len(results) == 0 {
-			log.Printf("score_updater: get %s failed: %v", id, err)
+		p, ok := payloadByID[id]
+		if !ok {
+			log.Printf("score_updater: ID %s not found in batch result", id)
 			continue
 		}
 
-		p := results[0].Payload
 		usageCount := payloadInt(p, "usage_count") + 1
 		successCount := payloadInt(p, "success_count")
 		if ev.Outcome {
 			successCount++
 		}
-
 		effective := (float64(successCount) + 2.0) / (float64(usageCount) + 4.0) // α=2, β=2
-		now := time.Now().UTC()
 
-		if err := u.qdrant.UpdatePayload(ctx, u.collection, id, map[string]any{
-			"usage_count":   usageCount,
-			"success_count": successCount,
-			"success_rate":  effective,
-			"last_used_at":  now.Format(time.RFC3339),
-		}); err != nil {
-			log.Printf("score_updater: update %s failed: %v", id, err)
-		}
+		wg.Add(1)
+		go func(id string, usage, success int, rate float64) {
+			defer wg.Done()
+			if err := u.qdrant.UpdatePayload(ctx, u.collection, id, map[string]any{
+				"usage_count":   usage,
+				"success_count": success,
+				"success_rate":  rate,
+				"last_used_at":  now.Format(time.RFC3339),
+			}); err != nil {
+				log.Printf("score_updater: update %s failed: %v", id, err)
+			}
+		}(id, usageCount, successCount, effective)
 	}
+	wg.Wait()
 }
