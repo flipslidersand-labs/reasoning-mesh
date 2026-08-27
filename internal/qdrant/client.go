@@ -231,10 +231,15 @@ func (c *Client) EnsureCollection(ctx context.Context, collection string, vector
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("qdrant create collection: status %d", resp.StatusCode)
+	if resp.StatusCode == http.StatusOK {
+		return nil
 	}
-	return nil
+	// 409 Conflict: another process created the collection between our GET and PUT.
+	// Treat as success to make EnsureCollection idempotent under concurrent startup.
+	if resp.StatusCode == http.StatusConflict {
+		return nil
+	}
+	return fmt.Errorf("qdrant create collection: status %d", resp.StatusCode)
 }
 
 func (c *Client) UpdatePayload(ctx context.Context, collection, id string, payload map[string]any) error {

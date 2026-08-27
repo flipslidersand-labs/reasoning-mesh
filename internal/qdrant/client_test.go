@@ -287,6 +287,26 @@ func TestEnsureCollection_UnexpectedStatus(t *testing.T) {
 	}
 }
 
+// TestEnsureCollection_ConcurrentCreate verifies that a 409 Conflict on PUT
+// (TOCTOU race: another process created the collection between GET and PUT)
+// is treated as success rather than an error.
+func TestEnsureCollection_ConcurrentCreate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		// Simulate a concurrent creator: PUT returns 409 Conflict.
+		w.WriteHeader(http.StatusConflict)
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+
+	if err := c.EnsureCollection(context.Background(), "col", 384); err != nil {
+		t.Fatalf("409 Conflict on PUT should be treated as success (TOCTOU race), got: %v", err)
+	}
+}
+
 func TestUpdatePayload_SendsPointsAndPayload(t *testing.T) {
 	var body map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
