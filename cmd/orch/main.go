@@ -63,7 +63,11 @@ func run(cfg *config.Config) error {
 	log.Printf("ollama OK (%s)", cfg.Ollama.Endpoint)
 
 	// --- Qdrant ---
-	qdrantClient := qdrant.New(cfg.Qdrant.Endpoint)
+	qdrantTimeout := 30 * time.Second
+	if cfg.Qdrant.TimeoutSeconds > 0 {
+		qdrantTimeout = time.Duration(cfg.Qdrant.TimeoutSeconds) * time.Second
+	}
+	qdrantClient := qdrant.NewWithTimeout(cfg.Qdrant.Endpoint, qdrantTimeout)
 	if err := qdrantClient.Ping(ctx); err != nil {
 		return fmt.Errorf("qdrant unreachable: %w", err)
 	}
@@ -98,7 +102,7 @@ func run(cfg *config.Config) error {
 
 	// --- Knowledge Extractor ---
 	ollamaStructurizer := knowledge.NewStructurizer(ollamaClient, cfg.Ollama.Models["router"])
-	extractor := knowledge.NewExtractor(ollamaStructurizer, embedder, qdrantClient, knowledgeCol)
+	extractor := knowledge.NewExtractorWithBatchSize(ollamaStructurizer, embedder, qdrantClient, knowledgeCol, cfg.Qdrant.UpsertBatchSize)
 
 	// --- Router ---
 	routerModel := cfg.Ollama.Models["router"]

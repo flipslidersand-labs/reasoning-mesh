@@ -15,32 +15,49 @@ import (
 	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
 )
 
+const defaultUpsertBatchSize = 32
+
 // Extractor is the full pipeline: chunk → structure → dedup ID → embed → upsert.
 type Extractor struct {
-	chunker      func(diff, ciLog string) []Chunk
-	structurizer *Structurizer
-	embedder     *Embedder
-	qdrant       *qdrant.Client
-	collection   string
+	chunker        func(diff, ciLog string) []Chunk
+	structurizer   *Structurizer
+	embedder       *Embedder
+	qdrant         *qdrant.Client
+	collection     string
+	upsertBatchSize int
 }
 
-// NewExtractor wires the full pipeline.
+// NewExtractor wires the full pipeline with the default batch size (32).
 func NewExtractor(s *Structurizer, emb *Embedder, qc *qdrant.Client, collection string) *Extractor {
+	return NewExtractorWithBatchSize(s, emb, qc, collection, defaultUpsertBatchSize)
+}
+
+// NewExtractorWithBatchSize wires the full pipeline with a configurable batch size.
+// batchSize controls how many chunks are embed+upserted per HTTP round-trip.
+// Use a smaller value to reduce per-request memory; use a larger value to reduce
+// the number of round-trips (bounded by the Qdrant client timeout).
+func NewExtractorWithBatchSize(s *Structurizer, emb *Embedder, qc *qdrant.Client, collection string, batchSize int) *Extractor {
+	if batchSize <= 0 {
+		batchSize = defaultUpsertBatchSize
+	}
 	return &Extractor{
 		chunker: func(diff, ciLog string) []Chunk {
 			chunks := ChunkDiff(diff)
 			chunks = append(chunks, ChunkCILog(ciLog)...)
 			return chunks
 		},
-		structurizer: s,
-		embedder:     emb,
-		qdrant:       qc,
-		collection:   collection,
+		structurizer:    s,
+		embedder:        emb,
+		qdrant:          qc,
+		collection:      collection,
+		upsertBatchSize: batchSize,
 	}
 }
 
 // Run extracts knowledge from a CI-green commit and upserts it to Qdrant.
 // commitSHA is embedded in the deterministic ID to allow re-runs without duplication.
+// Chunks are processed in batches of upsertBatchSize to bound memory usage and
+// prevent HTTP timeout on large diffs.
 func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) error {
 	ctx, span := telemetry.Tracer("knowledge/extractor").Start(ctx, "extractor.Run")
 	defer span.End()
@@ -53,53 +70,82 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 		return nil
 	}
 
-	var pts []qdrant.UpsertPoint
+	upserted := 0
 	now := time.Now().UTC()
-	for _, chunk := range chunks {
-		sc, err := e.structurizer.Structurize(ctx, chunk)
+
+	for batchStart := 0; batchStart < len(chunks); batchStart += e.upsertBatchSize {
+		batchEnd := batchStart + e.upsertBatchSize
+		if batchEnd > len(chunks) {
+			batchEnd = len(chunks)
+		}
+		batch := chunks[batchStart:batchEnd]
+
+		// Structurize all chunks in this batch first, skipping failures.
+		type structuredItem struct {
+			sc  StructuredChunk
+			id  string
+		}
+		items := make([]structuredItem, 0, len(batch))
+		texts := make([]string, 0, len(batch))
+		for _, chunk := range batch {
+			sc, err := e.structurizer.Structurize(ctx, chunk)
+			if err != nil {
+				log.Printf("extractor: structurize error: %v", err)
+				continue
+			}
+			items = append(items, structuredItem{sc: sc, id: deterministicID(sc.TaskType, sc.Content)})
+			texts = append(texts, sc.Content)
+		}
+		if len(items) == 0 {
+			continue
+		}
+
+		// Embed all texts in this batch in one request.
+		vectors, err := e.embedder.Embed(ctx, texts)
 		if err != nil {
-			log.Printf("extractor: structurize error: %v", err)
+			log.Printf("extractor: embed error (batch %d-%d): %v", batchStart, batchEnd-1, err)
 			continue
 		}
 
-		id := deterministicID(sc.TaskType, sc.Content)
-
-		vectors, err := e.embedder.Embed(ctx, []string{sc.Content})
-		if err != nil {
-			log.Printf("extractor: embed error: %v", err)
+		// Build UpsertPoints from valid embed results.
+		pts := make([]qdrant.UpsertPoint, 0, len(items))
+		for i, item := range items {
+			if i >= len(vectors) || len(vectors[i]) == 0 {
+				continue
+			}
+			pts = append(pts, qdrant.UpsertPoint{
+				ID:     item.id,
+				Vector: vectors[i],
+				Payload: map[string]any{
+					"content":       item.sc.Content,
+					"task_type":     string(toQdrantTaskType(item.sc.TaskType)),
+					"language":      item.sc.Language,
+					"framework":     item.sc.Framework,
+					"source":        "ci",
+					"commit_sha":    commitSHA,
+					"usage_count":   0,
+					"success_count": 0,
+					"success_rate":  0.5,
+					"tags":          item.sc.Tags,
+					"created_at":    now.Format(time.RFC3339),
+					"last_used_at":  now.Format(time.RFC3339),
+				},
+			})
+		}
+		if len(pts) == 0 {
 			continue
 		}
-		if len(vectors) == 0 || len(vectors[0]) == 0 {
-			continue
-		}
 
-		pts = append(pts, qdrant.UpsertPoint{
-			ID:     id,
-			Vector: vectors[0],
-			Payload: map[string]any{
-				"content":       sc.Content,
-				"task_type":     string(toQdrantTaskType(sc.TaskType)),
-				"language":      sc.Language,
-				"framework":     sc.Framework,
-				"source":        "ci",
-				"commit_sha":    commitSHA,
-				"usage_count":   0,
-				"success_count": 0,
-				"success_rate":  0.5,
-				"tags":          sc.Tags,
-				"created_at":    now.Format(time.RFC3339),
-				"last_used_at":  now.Format(time.RFC3339),
-			},
-		})
-	}
-	if len(pts) > 0 {
 		if err := e.qdrant.BulkUpsert(ctx, e.collection, pts); err != nil {
+			log.Printf("extractor: bulk upsert error (batch %d-%d): %v", batchStart, batchEnd-1, err)
 			span.SetStatus(codes.Error, err.Error())
-			return fmt.Errorf("extractor: bulk upsert: %w", err)
+			continue
 		}
+		log.Printf("extractor: bulk upserted %d points (batch %d-%d, commit=%s)", len(pts), batchStart, batchEnd-1, commitSHA)
+		upserted += len(pts)
 	}
-	log.Printf("extractor: bulk upserted %d points (commit=%s)", len(pts), commitSHA)
-	span.SetAttributes(attribute.Int("upserted_count", len(pts)))
+
+	span.SetAttributes(attribute.Int("upserted_count", upserted))
 	return nil
 }
 

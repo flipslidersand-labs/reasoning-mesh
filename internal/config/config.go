@@ -44,8 +44,14 @@ type OllamaConfig struct {
 }
 
 type QdrantConfig struct {
-	Endpoint    string            `yaml:"endpoint"`
-	Collections map[string]string `yaml:"collections"`
+	Endpoint        string            `yaml:"endpoint"`
+	Collections     map[string]string `yaml:"collections"`
+	// UpsertBatchSize controls how many points are sent per BulkUpsert call
+	// in Extractor.Run. Default 0 means the extractor uses its built-in default (32).
+	UpsertBatchSize int               `yaml:"upsert_batch_size"`
+	// TimeoutSeconds is the HTTP client timeout for Qdrant requests.
+	// Default 0 means the client uses its built-in default (30s).
+	TimeoutSeconds  int               `yaml:"timeout_seconds"`
 }
 
 type EmbedderConfig struct {

@@ -3,9 +3,11 @@ package qdrant
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func qdrantOK(t *testing.T, method, pathSuffix string, respBody any) *httptest.Server {
@@ -325,5 +327,52 @@ func TestUpdatePayload_SendsPointsAndPayload(t *testing.T) {
 	points, _ := body["points"].([]any)
 	if len(points) != 1 || points[0].(string) != "my-id" {
 		t.Errorf("expected points=[my-id], got %v", body["points"])
+	}
+}
+
+// --- NewWithTimeout ---
+
+func TestNewWithTimeout_UsesCustomTimeout(t *testing.T) {
+	// Verify the constructor wires the provided duration into the HTTP client.
+	c := NewWithTimeout("http://127.0.0.1:19997", 5*time.Second)
+	if c == nil {
+		t.Fatal("expected non-nil client")
+	}
+	if c.http.Timeout != 5*time.Second {
+		t.Errorf("expected 5s timeout, got %v", c.http.Timeout)
+	}
+}
+
+// --- BulkUpsert batching ---
+
+func TestBulkUpsert_SendsAllPoints(t *testing.T) {
+	var captured []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		captured = append(captured, body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"result": "ok"})
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+
+	pts := make([]UpsertPoint, 5)
+	for i := range pts {
+		pts[i] = UpsertPoint{
+			ID:      fmt.Sprintf("id-%d", i),
+			Vector:  []float32{float32(i)},
+			Payload: map[string]any{"i": i},
+		}
+	}
+	if err := c.BulkUpsert(context.Background(), "col", pts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(captured) != 1 {
+		t.Fatalf("expected 1 HTTP call, got %d", len(captured))
+	}
+	points, _ := captured[0]["points"].([]any)
+	if len(points) != 5 {
+		t.Errorf("expected 5 points in single request, got %d", len(points))
 	}
 }

@@ -17,9 +17,15 @@ type Client struct {
 }
 
 func New(endpoint string) *Client {
+	return NewWithTimeout(endpoint, 30*time.Second)
+}
+
+// NewWithTimeout creates a Client with a configurable HTTP timeout.
+// Use a longer timeout (e.g. 120s) when upserting large batches.
+func NewWithTimeout(endpoint string, timeout time.Duration) *Client {
 	return &Client{
 		endpoint: endpoint,
-		http:     &http.Client{Timeout: 30 * time.Second},
+		http:     &http.Client{Timeout: timeout},
 	}
 }
 

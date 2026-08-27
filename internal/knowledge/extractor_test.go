@@ -31,3 +31,18 @@ func TestDeterministicID_DifferentContent(t *testing.T) {
 		t.Error("different content should produce different IDs")
 	}
 }
+
+func TestNewExtractorWithBatchSize_ZeroFallsToDefault(t *testing.T) {
+	// batchSize=0 should not panic and should produce a non-nil extractor.
+	e := knowledge.NewExtractorWithBatchSize(nil, nil, nil, "col", 0)
+	if e == nil {
+		t.Fatal("expected non-nil extractor")
+	}
+}
+
+func TestNewExtractor_NonNil(t *testing.T) {
+	e := knowledge.NewExtractor(nil, nil, nil, "col")
+	if e == nil {
+		t.Fatal("expected non-nil extractor")
+	}
+}

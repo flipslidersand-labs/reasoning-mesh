@@ -10,6 +10,14 @@ qdrant:
   collections:
     knowledge: "rm_knowledge"
     experience: "rm_experience"
+  # upsert_batch_size: number of points per BulkUpsert call in Extractor.Run.
+  # Increase to reduce round-trips; decrease to reduce per-request memory.
+  # Default: 32
+  upsert_batch_size: 32
+  # timeout_seconds: HTTP client timeout for Qdrant requests.
+  # Increase when upserting large batches on a slow network.
+  # Default: 30
+  timeout_seconds: 30
 
 embedder:
   endpoint: "http://YOUR_HOST:9092"
