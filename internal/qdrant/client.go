@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -40,7 +41,8 @@ func (c *Client) Ping(ctx context.Context) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("qdrant ping: status %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("qdrant ping: status %d: %s", resp.StatusCode, body)
 	}
 	return nil
 }
@@ -115,7 +117,8 @@ func (c *Client) Upsert(ctx context.Context, collection, id string, vector []flo
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("qdrant upsert: status %d", resp.StatusCode)
+		rbody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("qdrant upsert: status %d: %s", resp.StatusCode, rbody)
 	}
 	return nil
 }
@@ -159,7 +162,8 @@ func (c *Client) Search(ctx context.Context, collection string, vector []float32
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("qdrant search: status %d", resp.StatusCode)
+		rbody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("qdrant search: status %d: %s", resp.StatusCode, rbody)
 	}
 
 	var result struct {
@@ -196,7 +200,8 @@ func (c *Client) GetByID(ctx context.Context, collection, id string) ([]SearchRe
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("qdrant get: status %d", resp.StatusCode)
+		rbody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("qdrant get: status %d: %s", resp.StatusCode, rbody)
 	}
 
 	var result struct {
@@ -223,6 +228,8 @@ func (c *Client) EnsureCollection(ctx context.Context, collection string, vector
 	if err != nil {
 		return err
 	}
+	// Drain and close to allow Keep-Alive connection reuse.
+	_, _ = io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
 		return nil // already exists
@@ -259,7 +266,8 @@ func (c *Client) EnsureCollection(ctx context.Context, collection string, vector
 	if resp.StatusCode == http.StatusConflict {
 		return nil
 	}
-	return fmt.Errorf("qdrant create collection: status %d", resp.StatusCode)
+	rbody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	return fmt.Errorf("qdrant create collection: status %d: %s", resp.StatusCode, rbody)
 }
 
 func (c *Client) UpdatePayload(ctx context.Context, collection, id string, payload map[string]any) error {
@@ -286,7 +294,8 @@ func (c *Client) UpdatePayload(ctx context.Context, collection, id string, paylo
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("qdrant update payload: status %d", resp.StatusCode)
+		rbody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("qdrant update payload: status %d: %s", resp.StatusCode, rbody)
 	}
 	return nil
 }
