@@ -31,14 +31,13 @@ type Handler struct {
 }
 
 // NewHandler creates a trigger Handler.
-// The token is read from LLMO_TRIGGER_TOKEN at construction time; if unset a
-// warning is logged but the server still starts (to avoid breaking existing
-// deployments that haven't set the variable yet).
+// The token is read from LLMO_TRIGGER_TOKEN at construction time.
+// If the variable is unset the server refuses to start (fail-safe default).
 // Pass a non-nil wg to track in-flight extraction goroutines for graceful shutdown.
 func NewHandler(extractor *knowledge.Extractor, wg *sync.WaitGroup) *Handler {
 	token := os.Getenv("LLMO_TRIGGER_TOKEN")
 	if token == "" {
-		log.Printf("WARN: LLMO_TRIGGER_TOKEN is not set — /v1/trigger accepts any request")
+		log.Fatalf("LLMO_TRIGGER_TOKEN is not set — refusing to start with unauthenticated /v1/trigger")
 	}
 	return &Handler{extractor: extractor, token: token, wg: wg}
 }

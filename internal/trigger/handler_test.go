@@ -8,6 +8,12 @@ import (
 	"testing"
 )
 
+func TestMain(m *testing.M) {
+	// LLMO_TRIGGER_TOKEN must be set; server refuses to start without it.
+	os.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
+	os.Exit(m.Run())
+}
+
 func makeRequest(body string, token string) *http.Request {
 	req := httptest.NewRequest(http.MethodPost, "/v1/trigger", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -18,17 +24,6 @@ func makeRequest(body string, token string) *http.Request {
 }
 
 const validPayload = `{"commit_sha":"abc123","diff":"","ci_log":""}`
-
-func TestHandler_NoToken_AcceptsAny(t *testing.T) {
-	os.Unsetenv("LLMO_TRIGGER_TOKEN")
-	h := NewHandler(nil, nil)
-
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, makeRequest(validPayload, ""))
-	if rec.Code != http.StatusAccepted {
-		t.Errorf("want 202, got %d", rec.Code)
-	}
-}
 
 func TestHandler_WithToken_ValidBearer(t *testing.T) {
 	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
@@ -74,11 +69,10 @@ func TestHandler_MethodNotAllowed(t *testing.T) {
 }
 
 func TestHandler_MissingCommitSHA(t *testing.T) {
-	os.Unsetenv("LLMO_TRIGGER_TOKEN")
 	h := NewHandler(nil, nil)
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, makeRequest(`{"diff":""}`, ""))
+	h.ServeHTTP(rec, makeRequest(`{"diff":""}`, "test-token"))
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d", rec.Code)
 	}

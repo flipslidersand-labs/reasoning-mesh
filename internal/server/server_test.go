@@ -6,11 +6,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/flipslidersand/reasoning-mesh/internal/router"
 	"github.com/flipslidersand/reasoning-mesh/internal/server"
 )
+
+func TestMain(m *testing.M) {
+	// LLMO_TRIGGER_TOKEN must be set; server refuses to start without it.
+	os.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
+	os.Exit(m.Run())
+}
 
 // stubAdapter is a deterministic ModelAdapter for testing.
 type stubAdapter struct{ name string }

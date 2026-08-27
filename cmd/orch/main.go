@@ -129,7 +129,7 @@ func run(cfg *config.Config) error {
 	// Distinct from LLMO_TRIGGER_TOKEN (CI-only, scoped to /v1/trigger).
 	bearerToken := os.Getenv("LLMO_ORCH_TOKEN")
 	if bearerToken == "" {
-		log.Printf("WARN: LLMO_ORCH_TOKEN is not set — all endpoints except /v1/health are unprotected")
+		log.Fatalf("LLMO_ORCH_TOKEN is not set — refusing to start with unauthenticated endpoints")
 	}
 
 	// --- PendingStore with background Sweep (#74) ---
