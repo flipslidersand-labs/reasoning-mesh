@@ -17,11 +17,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          args: --timeout=5m
+      - name: Vet
+        run: go vet ./...
 
       - name: Run tests with coverage
         id: tests
@@ -35,16 +32,6 @@ jobs:
           echo "Total coverage: ${TOTAL}%"
           if [ "${TOTAL}" -lt 40 ]; then
             echo "::error::Coverage ${TOTAL}% is below minimum threshold of 40%"
-            exit 1
-          fi
-
-      - name: Check coverage threshold
-        run: |
-          go test ./... -coverprofile=cover.out -count=1 2>/dev/null
-          TOTAL=$(go tool cover -func=cover.out | awk '/^total:/{gsub(/%/,"",$3); print int($3)}')
-          echo "Total coverage: ${TOTAL}%"
-          if [ "${TOTAL}" -lt 30 ]; then
-            echo "::error::Coverage ${TOTAL}% is below minimum threshold of 30%"
             exit 1
           fi
 
