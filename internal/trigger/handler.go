@@ -6,8 +6,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"os"
-	"strings"
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -30,22 +28,17 @@ type TriggerRequest struct {
 }
 
 // Handler handles POST /v1/trigger and dispatches to the Extractor.
+// Authentication is delegated to the bearerAuth middleware in internal/server;
+// this handler contains no token logic of its own.
 type Handler struct {
 	extractor *knowledge.Extractor
-	token     string          // expected Bearer token; empty = auth disabled (warn at startup)
 	wg        *sync.WaitGroup // optional; tracks in-flight extraction goroutines
 }
 
 // NewHandler creates a trigger Handler.
-// The token is read from LLMO_TRIGGER_TOKEN at construction time.
-// If the variable is unset the server refuses to start (fail-safe default).
 // Pass a non-nil wg to track in-flight extraction goroutines for graceful shutdown.
 func NewHandler(extractor *knowledge.Extractor, wg *sync.WaitGroup) *Handler {
-	token := os.Getenv("LLMO_TRIGGER_TOKEN")
-	if token == "" {
-		log.Fatalf("LLMO_TRIGGER_TOKEN is not set — refusing to start with unauthenticated /v1/trigger")
-	}
-	return &Handler{extractor: extractor, token: token, wg: wg}
+	return &Handler{extractor: extractor, wg: wg}
 }
 
 // Wait blocks until all in-flight extraction goroutines complete.
@@ -61,15 +54,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
-	}
-
-	// Validate Bearer token when configured.
-	if h.token != "" {
-		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != h.token {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
 	}
 
 	_, span := telemetry.Tracer("trigger/ingest").Start(r.Context(), "trigger")

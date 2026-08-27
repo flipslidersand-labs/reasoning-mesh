@@ -4,15 +4,8 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 )
-
-func TestMain(m *testing.M) {
-	// LLMO_TRIGGER_TOKEN must be set; server refuses to start without it.
-	os.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
-	os.Exit(m.Run())
-}
 
 func makeRequest(body string, token string) *http.Request {
 	req := httptest.NewRequest(http.MethodPost, "/v1/trigger", bytes.NewBufferString(body))
@@ -26,36 +19,25 @@ func makeRequest(body string, token string) *http.Request {
 // validPayload uses a 7-character hex SHA — the minimum accepted by CommitSHA validation.
 const validPayload = `{"commit_sha":"abc1234","diff":"","ci_log":""}`
 
-func TestHandler_WithToken_ValidBearer(t *testing.T) {
-	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
+// Handler contains no token logic; authentication is handled by the bearerAuth
+// middleware in internal/server. All requests that reach the handler are accepted.
+func TestHandler_AcceptsRequest(t *testing.T) {
 	h := NewHandler(nil, nil)
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, makeRequest(validPayload, "secret"))
+	h.ServeHTTP(rec, makeRequest(validPayload, ""))
 	if rec.Code != http.StatusAccepted {
 		t.Errorf("want 202, got %d", rec.Code)
 	}
 }
 
-func TestHandler_WithToken_WrongToken(t *testing.T) {
-	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
+func TestHandler_AcceptsRequestWithToken(t *testing.T) {
 	h := NewHandler(nil, nil)
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, makeRequest(validPayload, "wrong"))
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("want 401, got %d", rec.Code)
-	}
-}
-
-func TestHandler_WithToken_MissingHeader(t *testing.T) {
-	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
-	h := NewHandler(nil, nil)
-
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, makeRequest(validPayload, ""))
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("want 401, got %d", rec.Code)
+	h.ServeHTTP(rec, makeRequest(validPayload, "any-token"))
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("want 202, got %d", rec.Code)
 	}
 }
 
@@ -80,7 +62,6 @@ func TestHandler_MissingCommitSHA(t *testing.T) {
 }
 
 func TestHandler_BodyTooLarge(t *testing.T) {
-	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
 	h := NewHandler(nil, nil)
 
 	// Build a payload larger than 16 MiB.
