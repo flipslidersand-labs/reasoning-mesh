@@ -132,8 +132,10 @@ func run(cfg *config.Config) error {
 		log.Fatalf("LLMO_ORCH_TOKEN is not set — refusing to start with unauthenticated endpoints")
 	}
 
-	// --- PendingStore with background Sweep (#74) ---
+	// --- PendingStore (#111): background sweep and entry cap are now managed
+	// internally by NewPendingStore; no manual goroutine needed here.
 	pending := server.NewPendingStore()
+	defer pending.Stop()
 
 	// --- WaitGroup for extraction goroutines (#70) ---
 	var extractWG sync.WaitGroup
@@ -163,22 +165,6 @@ func run(cfg *config.Config) error {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	// Periodically evict expired PendingStore entries to prevent unbounded growth.
-	sweepCtx, sweepCancel := context.WithCancel(context.Background())
-	defer sweepCancel()
-	go func() {
-		ticker := time.NewTicker(10 * time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				pending.Sweep()
-			case <-sweepCtx.Done():
-				return
-			}
-		}
-	}()
-
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server: %v", err)
@@ -187,8 +173,6 @@ func run(cfg *config.Config) error {
 
 	<-quit
 	log.Println("shutting down...")
-
-	sweepCancel() // stop background sweep
 
 	shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
