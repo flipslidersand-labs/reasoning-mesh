@@ -31,7 +31,9 @@ func TestRunIngest_File(t *testing.T) {
 	defer srv.Close()
 
 	captureOutput(func() {
-		runIngest([]string{"--server", srv.URL, "--file", f.Name()})
+		if err := runIngest(nil, []string{"--server", srv.URL, "--file", f.Name()}); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 	})
 
 	if captured.CommitSHA != "file:"+f.Name() {
@@ -39,6 +41,25 @@ func TestRunIngest_File(t *testing.T) {
 	}
 	if captured.Diff == "" {
 		t.Error("diff should contain file content")
+	}
+}
+
+func TestRunIngest_ReturnsError_OnServerError(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "doc*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString("content")
+	f.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	err = runIngest(nil, []string{"--server", srv.URL, "--file", f.Name()})
+	if err == nil {
+		t.Error("expected error for non-202 response")
 	}
 }
 

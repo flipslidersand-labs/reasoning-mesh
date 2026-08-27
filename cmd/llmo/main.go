@@ -38,9 +38,15 @@ func main() {
 
 	switch os.Args[1] {
 	case "ask":
-		runAsk(os.Args[2:])
+		if err := runAsk(cfg, os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
 	case "ingest":
-		runIngest(os.Args[2:])
+		if err := runIngest(cfg, os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
 	case "eval":
 		runEval(cfg, os.Args[2:])
 	case "bench":

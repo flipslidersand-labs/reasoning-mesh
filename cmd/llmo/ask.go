@@ -6,11 +6,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/flipslidersand/reasoning-mesh/internal/config"
 )
 
 type askRequest struct {
@@ -23,25 +24,25 @@ type askResponse struct {
 	Error  string `json:"error,omitempty"`
 }
 
-func runAsk(args []string) {
+func runAsk(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("ask", flag.ExitOnError)
-	serverURL := fs.String("server", defaultServerURL(), "llmo server base URL")
-	token := fs.String("token", os.Getenv("LLMO_TRIGGER_TOKEN"), "bearer token")
+	serverURL := fs.String("server", defaultServerURL(cfg), "llmo server base URL")
+	token := fs.String("token", os.Getenv("LLMO_ORCH_TOKEN"), "bearer token")
 	_ = fs.Parse(args)
 
 	if fs.NArg() == 0 {
 		fmt.Fprintln(os.Stderr, "usage: llmo ask [flags] \"<task>\"")
-		os.Exit(1)
+		return fmt.Errorf("no task provided")
 	}
 	task := strings.Join(fs.Args(), " ")
 
 	body, err := json.Marshal(askRequest{Task: task})
 	if err != nil {
-		log.Fatalf("ask: marshal request: %v", err)
+		return fmt.Errorf("ask: marshal request: %w", err)
 	}
 	req, err := http.NewRequest(http.MethodPost, *serverURL+"/v1/route", bytes.NewReader(body))
 	if err != nil {
-		log.Fatalf("ask: build request: %v", err)
+		return fmt.Errorf("ask: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if *token != "" {
@@ -51,27 +52,36 @@ func runAsk(args []string) {
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatalf("ask: request failed: %v", err)
+		return fmt.Errorf("ask: request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("ask: server returned %d: %s", resp.StatusCode, raw)
+		return fmt.Errorf("ask: server returned %d: %s", resp.StatusCode, raw)
 	}
 
 	var ar askResponse
 	if err := json.Unmarshal(raw, &ar); err != nil {
-		log.Fatalf("ask: decode response: %v", err)
+		return fmt.Errorf("ask: decode response: %w", err)
 	}
 	if ar.Error != "" {
-		fmt.Fprintf(os.Stderr, "error: %s\n", ar.Error)
-		os.Exit(1)
+		return fmt.Errorf("ask: %s", ar.Error)
 	}
 	fmt.Println(ar.Answer)
+	return nil
 }
 
-func defaultServerURL() string {
+// defaultServerURL returns the server URL from config, falling back to
+// the LLMO_URL environment variable, then http://localhost:8080.
+func defaultServerURL(cfg *config.Config) string {
+	if cfg != nil && cfg.Server.Port != 0 {
+		host := cfg.Server.Host
+		if host == "" {
+			host = "localhost"
+		}
+		return fmt.Sprintf("http://%s:%d", host, cfg.Server.Port)
+	}
 	if v := os.Getenv("LLMO_URL"); v != "" {
 		return strings.TrimRight(v, "/")
 	}
