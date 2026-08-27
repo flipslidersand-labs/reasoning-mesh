@@ -12,7 +12,7 @@ jobs:
         with:
           fetch-depth: 2  # need HEAD~1 for diff
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -23,9 +23,20 @@ jobs:
           version: latest
           args: --timeout=5m
 
-      - name: Run tests
+      - name: Run tests with coverage
         id: tests
-        run: go test ./... 2>&1 | tee /tmp/test.log; exit ${PIPESTATUS[0]}
+        run: |
+          go test -race ./... -coverprofile=cover.out -count=1 2>&1 | tee /tmp/test.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Check coverage threshold
+        run: |
+          TOTAL=$(go tool cover -func=cover.out | awk '/^total:/{gsub(/%/,"",$3); print int($3)}')
+          echo "Total coverage: ${TOTAL}%"
+          if [ "${TOTAL}" -lt 40 ]; then
+            echo "::error::Coverage ${TOTAL}% is below minimum threshold of 40%"
+            exit 1
+          fi
 
       - name: Check coverage threshold
         run: |
