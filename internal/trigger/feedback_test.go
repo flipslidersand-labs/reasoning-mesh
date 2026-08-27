@@ -12,6 +12,11 @@ import (
 	"github.com/flipslidersand/reasoning-mesh/internal/trigger"
 )
 
+// validUUID is a well-formed UUID v4 used throughout feedback tests.
+const validUUID1 = "550e8400-e29b-41d4-a716-446655440000"
+const validUUID2 = "6ba7b810-9dad-41d1-80b4-00c04fd430c8"
+const validUUID3 = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+
 func newTestUpdater() *knowledge.ScoreUpdater {
 	return knowledge.NewScoreUpdater((*qdrant.Client)(nil), "test", 8)
 }
@@ -23,7 +28,7 @@ func TestFeedbackHandler_OK(t *testing.T) {
 
 	h := trigger.NewFeedbackHandler(u, nil)
 	body, _ := json.Marshal(trigger.FeedbackRequest{
-		KnowledgeIDs: []string{"id-001"},
+		KnowledgeIDs: []string{validUUID1},
 		Outcome:      true,
 		Evaluator:    "ci",
 	})
@@ -54,12 +59,27 @@ func TestFeedbackHandler_MissingIDs(t *testing.T) {
 	}
 }
 
+func TestFeedbackHandler_InvalidKnowledgeID(t *testing.T) {
+	u := newTestUpdater()
+	h := trigger.NewFeedbackHandler(u, nil)
+	body, _ := json.Marshal(trigger.FeedbackRequest{
+		KnowledgeIDs: []string{"id-001"}, // not a UUID v4
+		Outcome:      true,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/feedback", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for invalid knowledge_id, got %d", rec.Code)
+	}
+}
+
 func TestFeedbackHandler_Evaluator(t *testing.T) {
 	u := knowledge.NewScoreUpdater(nil, "test", 8)
 	h := trigger.NewFeedbackHandler(u, nil)
 
 	body, _ := json.Marshal(trigger.FeedbackRequest{
-		KnowledgeIDs: []string{"id-001"},
+		KnowledgeIDs: []string{validUUID1},
 		Outcome:      false,
 		Evaluator:    "eval",
 	})
@@ -99,7 +119,7 @@ func TestFeedbackHandler_ResponseCountMatchesIDs(t *testing.T) {
 
 	h := trigger.NewFeedbackHandler(u, nil)
 	body, _ := json.Marshal(trigger.FeedbackRequest{
-		KnowledgeIDs: []string{"id-001", "id-002", "id-003"},
+		KnowledgeIDs: []string{validUUID1, validUUID2, validUUID3},
 		Outcome:      true,
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/feedback", bytes.NewReader(body))
@@ -123,6 +143,8 @@ func TestFeedbackHandler_RequestIDResolution(t *testing.T) {
 	u.Start()
 	defer u.Stop()
 
+	// IDs from the pending store are already internally generated — they bypass
+	// the UUID validation (only directly provided knowledge_ids are validated).
 	pending := &stubPending{ids: []string{"id-from-store"}}
 	h := trigger.NewFeedbackHandler(u, pending)
 	body, _ := json.Marshal(trigger.FeedbackRequest{RequestID: "req-001", Outcome: true})

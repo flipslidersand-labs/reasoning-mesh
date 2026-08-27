@@ -15,6 +15,7 @@ import (
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/router"
 	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
+	"github.com/flipslidersand/reasoning-mesh/internal/validate"
 )
 
 // InferRetriever is the interface the infer handler needs for RAG lookup.
@@ -81,6 +82,10 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	taskType := eval.TaskType(req.TaskType)
 	if taskType == "" {
 		taskType = eval.TaskImplementation
+	} else if err := validate.TaskType(req.TaskType); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		writeErr(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	topK := req.TopK
 	if topK <= 0 {

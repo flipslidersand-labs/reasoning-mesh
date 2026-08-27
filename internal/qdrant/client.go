@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/flipslidersand/reasoning-mesh/internal/validate"
 )
 
 type Client struct {
@@ -85,6 +87,9 @@ func (c *Client) BulkUpsert(ctx context.Context, collection string, pts []Upsert
 }
 
 func (c *Client) Upsert(ctx context.Context, collection, id string, vector []float32, payload map[string]any) error {
+	if err := validate.CollectionName(collection); err != nil {
+		return err
+	}
 	body, err := json.Marshal(upsertRequest{
 		Points: []point{{ID: id, Vector: vector, Payload: payload}},
 	})
@@ -123,6 +128,9 @@ type SearchResult struct {
 }
 
 func (c *Client) Search(ctx context.Context, collection string, vector []float32, topK int, filter map[string]any) ([]SearchResult, error) {
+	if err := validate.CollectionName(collection); err != nil {
+		return nil, err
+	}
 	body, err := json.Marshal(searchRequest{
 		Vector:      vector,
 		Limit:       topK,
@@ -159,6 +167,9 @@ func (c *Client) Search(ctx context.Context, collection string, vector []float32
 
 // GetByID fetches a single point by its ID.
 func (c *Client) GetByID(ctx context.Context, collection, id string) ([]SearchResult, error) {
+	if err := validate.CollectionName(collection); err != nil {
+		return nil, err
+	}
 	body, err := json.Marshal(map[string]any{
 		"ids":          []string{id},
 		"with_payload": true,
@@ -194,6 +205,9 @@ func (c *Client) GetByID(ctx context.Context, collection, id string) ([]SearchRe
 // EnsureCollection checks whether the named collection exists and creates it
 // if not (dim=vectorDim, distance=Cosine). Safe to call on every startup.
 func (c *Client) EnsureCollection(ctx context.Context, collection string, vectorDim int) error {
+	if err := validate.CollectionName(collection); err != nil {
+		return err
+	}
 	url := fmt.Sprintf("%s/collections/%s", c.endpoint, collection)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -243,6 +257,9 @@ func (c *Client) EnsureCollection(ctx context.Context, collection string, vector
 }
 
 func (c *Client) UpdatePayload(ctx context.Context, collection, id string, payload map[string]any) error {
+	if err := validate.CollectionName(collection); err != nil {
+		return err
+	}
 	body, err := json.Marshal(map[string]any{
 		"payload": payload,
 		"points":  []string{id},

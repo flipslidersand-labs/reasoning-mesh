@@ -10,6 +10,7 @@ import (
 
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
+	"github.com/flipslidersand/reasoning-mesh/internal/validate"
 )
 
 // PendingLookup is the subset of server.PendingStore needed by the feedback handler.
@@ -57,6 +58,16 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		span.SetStatus(codes.Error, err.Error())
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	// When the client provides knowledge_ids directly, validate them as UUID v4.
+	// IDs resolved from the pending store were already validated at ingest time.
+	if len(req.KnowledgeIDs) > 0 {
+		if err := validate.KnowledgeIDs(req.KnowledgeIDs); err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	ids := req.KnowledgeIDs

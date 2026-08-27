@@ -167,3 +167,15 @@ func TestInfer_BodyTooLarge(t *testing.T) {
 		t.Fatalf("want 413, got %d", rec.Code)
 	}
 }
+
+func TestInfer_InvalidTaskType(t *testing.T) {
+	srv := buildInferServer(nil, "")
+	body, _ := json.Marshal(server.InferRequest{Prompt: "hello", TaskType: "unknown-type"})
+	req := httptest.NewRequest(http.MethodPost, "/v1/infer", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for invalid task_type, got %d", rec.Code)
+	}
+}

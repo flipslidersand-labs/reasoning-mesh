@@ -23,7 +23,8 @@ func makeRequest(body string, token string) *http.Request {
 	return req
 }
 
-const validPayload = `{"commit_sha":"abc123","diff":"","ci_log":""}`
+// validPayload uses a 7-character hex SHA — the minimum accepted by CommitSHA validation.
+const validPayload = `{"commit_sha":"abc1234","diff":"","ci_log":""}`
 
 func TestHandler_WithToken_ValidBearer(t *testing.T) {
 	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
@@ -79,7 +80,7 @@ func TestHandler_MissingCommitSHA(t *testing.T) {
 }
 
 func TestHandler_BodyTooLarge(t *testing.T) {
-	os.Unsetenv("LLMO_TRIGGER_TOKEN")
+	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
 	h := NewHandler(nil, nil)
 
 	// Build a payload larger than 16 MiB.
@@ -90,9 +91,29 @@ func TestHandler_BodyTooLarge(t *testing.T) {
 	body := `{"commit_sha":"abc","diff":"` + string(large) + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/trigger", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("want 413, got %d", rec.Code)
+	}
+}
+
+func TestHandler_InvalidCommitSHA(t *testing.T) {
+	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
+	h := NewHandler(nil, nil)
+
+	invalid := []string{
+		`{"commit_sha":"abc123"}`,                   // 6 chars — too short
+		`{"commit_sha":"ABC1234"}`,                   // uppercase
+		`{"commit_sha":"../../etc/passwd"}`,          // path traversal
+		`{"commit_sha":"abc123\nX-Injected: true"}`,  // log injection
+	}
+	for _, body := range invalid {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, makeRequest(body, "test-token"))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("body %q: want 400, got %d", body, rec.Code)
+		}
 	}
 }
