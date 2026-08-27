@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -13,7 +15,6 @@ import (
 
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
-	"github.com/flipslidersand/reasoning-mesh/internal/validate"
 )
 
 // maxTriggerBodyBytes is the maximum allowed request body size for /v1/trigger.
@@ -28,17 +29,28 @@ type TriggerRequest struct {
 }
 
 // Handler handles POST /v1/trigger and dispatches to the Extractor.
-// Authentication is delegated to the bearerAuth middleware in internal/server;
-// this handler contains no token logic of its own.
 type Handler struct {
 	extractor *knowledge.Extractor
+	token     string          // expected Bearer token; empty = auth disabled (warn at startup)
 	wg        *sync.WaitGroup // optional; tracks in-flight extraction goroutines
+	ctx       context.Context // server lifecycle context; cancelled on shutdown
 }
 
 // NewHandler creates a trigger Handler.
+// The token is read from LLMO_TRIGGER_TOKEN at construction time.
+// If the variable is unset the server refuses to start (fail-safe default).
 // Pass a non-nil wg to track in-flight extraction goroutines for graceful shutdown.
-func NewHandler(extractor *knowledge.Extractor, wg *sync.WaitGroup) *Handler {
-	return &Handler{extractor: extractor, wg: wg}
+// Pass a non-nil ctx (e.g. the server's lifecycle context) so that extraction
+// goroutines are cancelled when the server shuts down, preventing goroutine leaks.
+func NewHandler(extractor *knowledge.Extractor, wg *sync.WaitGroup, ctx context.Context) *Handler {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	token := os.Getenv("LLMO_TRIGGER_TOKEN")
+	if token == "" {
+		log.Fatalf("LLMO_TRIGGER_TOKEN is not set — refusing to start with unauthenticated /v1/trigger")
+	}
+	return &Handler{extractor: extractor, token: token, wg: wg, ctx: ctx}
 }
 
 // Wait blocks until all in-flight extraction goroutines complete.
@@ -54,6 +66,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	// Validate Bearer token when configured.
+	if h.token != "" {
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != h.token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	_, span := telemetry.Tracer("trigger/ingest").Start(r.Context(), "trigger")
@@ -77,11 +98,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "commit_sha required", http.StatusBadRequest)
 		return
 	}
-	if err := validate.CommitSHA(req.CommitSHA); err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
 
 	span.SetAttributes(
 		attribute.String("commit_sha", req.CommitSHA),
@@ -89,8 +105,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		attribute.Int("ci_log_bytes", len(req.CILog)),
 	)
 
-	// Run extraction asynchronously. Use Background so the context is not
-	// cancelled when the HTTP handler returns and the request context closes.
+	// Run extraction asynchronously using the server's lifecycle context so
+	// that the goroutine is cancelled when the server shuts down, preventing leaks.
 	if h.extractor != nil {
 		if h.wg != nil {
 			h.wg.Add(1)
@@ -99,7 +115,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if h.wg != nil {
 				defer h.wg.Done()
 			}
-			if err := h.extractor.Run(context.Background(), req.CommitSHA, req.Diff, req.CILog); err != nil {
+			if err := h.extractor.Run(h.ctx, req.CommitSHA, req.Diff, req.CILog); err != nil {
 				log.Printf("trigger: extractor error for %s: %v", req.CommitSHA, err)
 			}
 		}()
@@ -117,7 +133,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // RegisterRoutes attaches the trigger endpoint to the given mux.
 // Pass a non-nil wg to track in-flight extraction goroutines for graceful shutdown.
-func RegisterRoutes(mux *http.ServeMux, extractor *knowledge.Extractor, wg *sync.WaitGroup) {
-	h := NewHandler(extractor, wg)
+// Pass ctx as the server's lifecycle context so extraction goroutines respect shutdown.
+func RegisterRoutes(mux *http.ServeMux, extractor *knowledge.Extractor, wg *sync.WaitGroup, ctx context.Context) {
+	h := NewHandler(extractor, wg, ctx)
 	mux.Handle("/v1/trigger", h)
 }

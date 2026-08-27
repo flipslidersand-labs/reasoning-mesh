@@ -144,6 +144,12 @@ func run(cfg *config.Config) error {
 	// --- WaitGroup for extraction goroutines (#70) ---
 	var extractWG sync.WaitGroup
 
+	// --- Lifecycle context for extraction goroutines (#106) ---
+	// Cancelled before extractWG.Wait() so in-flight Extractor.Run calls
+	// (e.g. blocked on Ollama) receive the shutdown signal and can exit early.
+	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
+	defer lifecycleCancel()
+
 	// --- HTTP Server ---
 	handler := server.Build(server.Config{
 		Router:       r,
@@ -153,6 +159,7 @@ func run(cfg *config.Config) error {
 		Pending:      pending,
 		BearerToken:  bearerToken,
 		ExtractWG:    &extractWG,
+		LifecycleCtx: lifecycleCtx,
 	})
 
 	addr := server.Addr(cfg.Server.Host, cfg.Server.Port)
@@ -177,6 +184,10 @@ func run(cfg *config.Config) error {
 
 	<-quit
 	log.Println("shutting down...")
+
+	// Cancel the lifecycle context first so in-flight extraction goroutines
+	// receive the shutdown signal before we drain new HTTP requests.
+	lifecycleCancel()
 
 	shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

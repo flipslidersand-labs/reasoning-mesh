@@ -2,6 +2,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
@@ -21,6 +22,11 @@ type Config struct {
 	Health       HealthConfig    // Ollama + Qdrant pingers for GET /v1/health
 	BearerToken  string          // if non-empty, all non-health endpoints require Authorization: Bearer <token>
 	ExtractWG    *sync.WaitGroup // if non-nil, trigger extraction goroutines are tracked for graceful shutdown
+	// LifecycleCtx is the server's lifecycle context. When cancelled (e.g. on
+	// SIGTERM), in-flight extraction goroutines spawned by /v1/trigger will
+	// receive the cancellation signal and exit early. If nil, context.Background
+	// is used (no cancellation — goroutines run to completion or until process exit).
+	LifecycleCtx context.Context
 }
 
 // Build constructs the HTTP mux with all registered routes.
@@ -45,7 +51,7 @@ func Build(cfg Config) http.Handler {
 	})
 
 	// Trigger: POST /v1/trigger (CI → knowledge ingest)
-	trigger.RegisterRoutes(mux, cfg.Extractor, cfg.ExtractWG)
+	trigger.RegisterRoutes(mux, cfg.Extractor, cfg.ExtractWG, cfg.LifecycleCtx)
 
 	// Feedback: POST /v1/feedback (inference outcome → score update)
 	trigger.RegisterFeedbackRoute(mux, cfg.ScoreUpdater, pending)

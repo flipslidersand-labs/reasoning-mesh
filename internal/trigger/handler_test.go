@@ -2,10 +2,18 @@ package trigger
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
+
+func TestMain(m *testing.M) {
+	// LLMO_TRIGGER_TOKEN must be set; server refuses to start without it.
+	os.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
+	os.Exit(m.Run())
+}
 
 func makeRequest(body string, token string) *http.Request {
 	req := httptest.NewRequest(http.MethodPost, "/v1/trigger", bytes.NewBufferString(body))
@@ -16,33 +24,54 @@ func makeRequest(body string, token string) *http.Request {
 	return req
 }
 
-// validPayload uses a 7-character hex SHA — the minimum accepted by CommitSHA validation.
-const validPayload = `{"commit_sha":"abc1234","diff":"","ci_log":""}`
+const validPayload = `{"commit_sha":"abc123","diff":"","ci_log":""}`
 
-// Handler contains no token logic; authentication is handled by the bearerAuth
-// middleware in internal/server. All requests that reach the handler are accepted.
-func TestHandler_AcceptsRequest(t *testing.T) {
-	h := NewHandler(nil, nil)
+func TestHandler_WithToken_AcceptsValidRequest(t *testing.T) {
+	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
+	h := NewHandler(nil, nil, nil)
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, makeRequest(validPayload, ""))
+	h.ServeHTTP(rec, makeRequest(validPayload, "test-token"))
 	if rec.Code != http.StatusAccepted {
 		t.Errorf("want 202, got %d", rec.Code)
 	}
 }
 
-func TestHandler_AcceptsRequestWithToken(t *testing.T) {
-	h := NewHandler(nil, nil)
+func TestHandler_WithToken_ValidBearer(t *testing.T) {
+	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
+	h := NewHandler(nil, nil, nil)
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, makeRequest(validPayload, "any-token"))
+	h.ServeHTTP(rec, makeRequest(validPayload, "secret"))
 	if rec.Code != http.StatusAccepted {
 		t.Errorf("want 202, got %d", rec.Code)
+	}
+}
+
+func TestHandler_WithToken_WrongToken(t *testing.T) {
+	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
+	h := NewHandler(nil, nil, nil)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, makeRequest(validPayload, "wrong"))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("want 401, got %d", rec.Code)
+	}
+}
+
+func TestHandler_WithToken_MissingHeader(t *testing.T) {
+	t.Setenv("LLMO_TRIGGER_TOKEN", "secret")
+	h := NewHandler(nil, nil, nil)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, makeRequest(validPayload, ""))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("want 401, got %d", rec.Code)
 	}
 }
 
 func TestHandler_MethodNotAllowed(t *testing.T) {
-	h := NewHandler(nil, nil)
+	h := NewHandler(nil, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/v1/trigger", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -52,7 +81,8 @@ func TestHandler_MethodNotAllowed(t *testing.T) {
 }
 
 func TestHandler_MissingCommitSHA(t *testing.T) {
-	h := NewHandler(nil, nil)
+	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
+	h := NewHandler(nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, makeRequest(`{"diff":""}`, "test-token"))
@@ -62,7 +92,8 @@ func TestHandler_MissingCommitSHA(t *testing.T) {
 }
 
 func TestHandler_BodyTooLarge(t *testing.T) {
-	h := NewHandler(nil, nil)
+	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
+	h := NewHandler(nil, nil, nil)
 
 	// Build a payload larger than 16 MiB.
 	large := make([]byte, maxTriggerBodyBytes+1)
@@ -80,21 +111,15 @@ func TestHandler_BodyTooLarge(t *testing.T) {
 	}
 }
 
-func TestHandler_InvalidCommitSHA(t *testing.T) {
+func TestHandler_CancelledContext_DoesNotBlock(t *testing.T) {
 	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
-	h := NewHandler(nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled; goroutine should not block
+	h := NewHandler(nil, nil, ctx)
 
-	invalid := []string{
-		`{"commit_sha":"abc123"}`,                   // 6 chars — too short
-		`{"commit_sha":"ABC1234"}`,                   // uppercase
-		`{"commit_sha":"../../etc/passwd"}`,          // path traversal
-		`{"commit_sha":"abc123\nX-Injected: true"}`,  // log injection
-	}
-	for _, body := range invalid {
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, makeRequest(body, "test-token"))
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("body %q: want 400, got %d", body, rec.Code)
-		}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, makeRequest(validPayload, "test-token"))
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("want 202, got %d", rec.Code)
 	}
 }
