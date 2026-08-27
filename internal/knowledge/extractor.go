@@ -71,6 +71,7 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 	}
 
 	upserted := 0
+	skipped := 0
 	now := time.Now().UTC()
 
 	for batchStart := 0; batchStart < len(chunks); batchStart += e.upsertBatchSize {
@@ -91,6 +92,7 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 			sc, err := e.structurizer.Structurize(ctx, chunk)
 			if err != nil {
 				log.Printf("extractor: structurize error: %v", err)
+				skipped++
 				continue
 			}
 			items = append(items, structuredItem{sc: sc, id: deterministicID(sc.TaskType, sc.Content)})
@@ -104,6 +106,7 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 		vectors, err := e.embedder.Embed(ctx, texts)
 		if err != nil {
 			log.Printf("extractor: embed error (batch %d-%d): %v", batchStart, batchEnd-1, err)
+			skipped += len(items)
 			continue
 		}
 
@@ -111,6 +114,7 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 		pts := make([]qdrant.UpsertPoint, 0, len(items))
 		for i, item := range items {
 			if i >= len(vectors) || len(vectors[i]) == 0 {
+				skipped++
 				continue
 			}
 			pts = append(pts, qdrant.UpsertPoint{
@@ -139,6 +143,7 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 		if err := e.qdrant.BulkUpsert(ctx, e.collection, pts); err != nil {
 			log.Printf("extractor: bulk upsert error (batch %d-%d): %v", batchStart, batchEnd-1, err)
 			span.SetStatus(codes.Error, err.Error())
+			skipped += len(pts)
 			continue
 		}
 		log.Printf("extractor: bulk upserted %d points (batch %d-%d, commit=%s)", len(pts), batchStart, batchEnd-1, commitSHA)
@@ -146,6 +151,12 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 	}
 
 	span.SetAttributes(attribute.Int("upserted_count", upserted))
+	span.SetAttributes(attribute.Int("skipped_count", skipped))
+	if skipped > 0 && upserted == 0 {
+		log.Printf("extractor: WARNING all %d chunks were skipped (commit=%s); check structurize/embed errors above", skipped, commitSHA)
+	} else if skipped > 0 {
+		log.Printf("extractor: %d/%d chunks skipped (commit=%s)", skipped, len(chunks), commitSHA)
+	}
 	return nil
 }
 
