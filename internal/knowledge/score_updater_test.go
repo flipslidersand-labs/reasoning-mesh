@@ -37,3 +37,26 @@ func TestScoreUpdater_BufferFull(t *testing.T) {
 	}
 	u.Stop()
 }
+
+// TestScoreUpdater_StopWithoutStart verifies Stop() does not deadlock when
+// Start() has never been called.
+func TestScoreUpdater_StopWithoutStart(t *testing.T) {
+	u := knowledge.NewScoreUpdater(nil, "rm_knowledge", 4)
+	u.Stop() // must return immediately without blocking
+}
+
+// TestScoreUpdater_DoubleStop verifies Stop() does not panic when called twice.
+func TestScoreUpdater_DoubleStop(t *testing.T) {
+	u := knowledge.NewScoreUpdater(nil, "rm_knowledge", 4)
+	u.Start()
+	u.Stop()
+	u.Stop() // must not panic
+}
+
+// TestScoreUpdater_DoubleStart verifies Start() is idempotent.
+func TestScoreUpdater_DoubleStart(t *testing.T) {
+	u := knowledge.NewScoreUpdater(nil, "rm_knowledge", 4)
+	u.Start()
+	u.Start() // second call must be a no-op
+	u.Stop()
+}

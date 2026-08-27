@@ -3,6 +3,8 @@ package knowledge
 import (
 	"context"
 	"log"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
@@ -22,6 +24,8 @@ type ScoreUpdater struct {
 	collection string
 	ch         chan FeedbackEvent
 	done       chan struct{}
+	stopOnce   sync.Once
+	started    atomic.Bool
 }
 
 // NewScoreUpdater creates a ScoreUpdater. Call Start() to begin processing.
@@ -35,14 +39,20 @@ func NewScoreUpdater(qc *qdrant.Client, collection string, bufSize int) *ScoreUp
 }
 
 // Start launches the background goroutine. Call Stop() to shut down cleanly.
+// Calling Start() more than once has no additional effect.
 func (u *ScoreUpdater) Start() {
-	go u.loop()
+	if u.started.CompareAndSwap(false, true) {
+		go u.loop()
+	}
 }
 
-// Stop drains the channel and waits for the goroutine to exit.
+// Stop signals the background goroutine to drain remaining events and exit.
+// It is safe to call Stop() multiple times or without a prior Start().
 func (u *ScoreUpdater) Stop() {
-	close(u.ch)
-	<-u.done
+	u.stopOnce.Do(func() { close(u.ch) })
+	if u.started.Load() {
+		<-u.done
+	}
 }
 
 // Send enqueues a FeedbackEvent for async processing. Non-blocking if buffer is full.
@@ -57,10 +67,15 @@ func (u *ScoreUpdater) Send(ev FeedbackEvent) {
 func (u *ScoreUpdater) loop() {
 	defer close(u.done)
 	for ev := range u.ch {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		u.apply(ctx, ev)
-		cancel()
+		u.applyWithTimeout(ev)
 	}
+}
+
+// applyWithTimeout wraps apply with a timeout context, ensuring cancel() is always called.
+func (u *ScoreUpdater) applyWithTimeout(ev FeedbackEvent) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	u.apply(ctx, ev)
 }
 
 func (u *ScoreUpdater) apply(ctx context.Context, ev FeedbackEvent) {
@@ -95,4 +110,3 @@ func (u *ScoreUpdater) apply(ctx context.Context, ev FeedbackEvent) {
 		}
 	}
 }
-
