@@ -73,13 +73,14 @@ func (r Result) keywordRecall(answer string, keywords []string) float64 {
 
 func ComputeSummaries(results []Result) []Summary {
 	type agg struct {
-		latency  int64
-		tokens   int
-		recall   float64
-		accuracy float64
-		accCount int
-		errors   int
-		count    int
+		latency    int64
+		tokens     int
+		recall     float64
+		accuracy   float64
+		accCount   int
+		errors     int
+		count      int
+		succCount  int // count excluding errors
 	}
 	m := map[SummaryKey]*agg{}
 	for _, r := range results {
@@ -89,15 +90,17 @@ func ComputeSummaries(results []Result) []Summary {
 		}
 		a := m[k]
 		a.count++
+		if r.Error != "" {
+			a.errors++
+			continue // exclude error results from recall/accuracy aggregation
+		}
+		a.succCount++
 		a.latency += r.LatencyMS
 		a.tokens += r.PromptTokens + r.CompletionTokens
 		a.recall += r.KeywordRecall
 		if r.Accuracy >= 0 {
 			a.accuracy += r.Accuracy
 			a.accCount++
-		}
-		if r.Error != "" {
-			a.errors++
 		}
 	}
 
@@ -107,13 +110,17 @@ func ComputeSummaries(results []Result) []Summary {
 		if a.accCount > 0 {
 			avgAcc = a.accuracy / float64(a.accCount)
 		}
+		succF := float64(a.succCount)
+		if succF == 0 {
+			succF = 1 // avoid div-by-zero; all metrics will be 0 anyway
+		}
 		summaries = append(summaries, Summary{
 			Model:        k.Model,
 			Condition:    k.Condition,
 			Count:        a.count,
-			AvgLatencyMS: float64(a.latency) / float64(a.count),
+			AvgLatencyMS: float64(a.latency) / succF,
 			TotalTokens:  a.tokens,
-			AvgRecall:    a.recall / float64(a.count),
+			AvgRecall:    a.recall / succF,
 			AvgAccuracy:  avgAcc,
 			ErrorCount:   a.errors,
 		})

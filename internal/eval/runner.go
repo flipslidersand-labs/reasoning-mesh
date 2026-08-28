@@ -10,6 +10,31 @@ import (
 	"github.com/flipslidersand/reasoning-mesh/internal/ollama"
 )
 
+const (
+	maxRetries    = 3
+	retryBaseWait = 5 * time.Second
+)
+
+func isTransientNetworkErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, marker := range []string{
+		"no route to host",
+		"connection refused",
+		"connection reset by peer",
+		"dial tcp",
+		"read tcp",
+		"EOF",
+	} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 const topK = 3
 
 // RetrieverMap maps each condition to its Retriever.
@@ -117,14 +142,45 @@ func (r *Runner) runOne(ctx context.Context, c Case, model string, cond Conditio
 		Condition: cond,
 	}
 
-	pr, err := r.buildPrompt(ctx, c, cond)
+	// Retry prompt build on transient network errors (embedding service blip).
+	var pr promptResult
+	var err error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		pr, err = r.buildPrompt(ctx, c, cond)
+		if err == nil || !isTransientNetworkErr(err) {
+			break
+		}
+		wait := retryBaseWait * time.Duration(1<<attempt)
+		log.Printf("build prompt transient error (attempt %d/%d): %v — retrying in %s", attempt+1, maxRetries, err, wait)
+		select {
+		case <-ctx.Done():
+			res.Error = ctx.Err().Error()
+			return res
+		case <-time.After(wait):
+		}
+	}
 	if err != nil {
 		res.Error = fmt.Sprintf("build prompt: %v", err)
 		return res
 	}
 
+	// Retry generation on transient network errors (node offline / flap).
+	var genResp *ollama.GenerateResponse
 	start := time.Now()
-	genResp, err := r.ollama.GenerateFull(ctx, model, pr.Prompt)
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		genResp, err = r.ollama.GenerateFull(ctx, model, pr.Prompt)
+		if err == nil || !isTransientNetworkErr(err) {
+			break
+		}
+		wait := retryBaseWait * time.Duration(1<<attempt)
+		log.Printf("generate transient error (attempt %d/%d, model=%s): %v — retrying in %s", attempt+1, maxRetries, model, err, wait)
+		select {
+		case <-ctx.Done():
+			res.Error = ctx.Err().Error()
+			return res
+		case <-time.After(wait):
+		}
+	}
 	res.LatencyMS = time.Since(start).Milliseconds()
 
 	if err != nil {
