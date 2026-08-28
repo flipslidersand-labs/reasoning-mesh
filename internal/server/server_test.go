@@ -240,6 +240,21 @@ func TestBearerAuth_HealthExempt(t *testing.T) {
 	}
 }
 
+func TestBearerAuth_TriggerExempt(t *testing.T) {
+	// /v1/trigger must not be blocked by ORCH_TOKEN — it has its own TRIGGER_TOKEN auth.
+	srv := buildTestServer("orch-secret")
+	body := `{"commit_sha":"abc","diff":"x","ci_log":""}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/trigger", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-token") // matches LLMO_TRIGGER_TOKEN set in TestMain
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	// 202 = trigger handler accepted; 401 = ORCH_TOKEN blocked it (regression)
+	if rec.Code == http.StatusUnauthorized {
+		t.Fatalf("/v1/trigger should be exempt from ORCH_TOKEN bearerAuth, got 401")
+	}
+}
+
 func TestRoute_BodyTooLarge(t *testing.T) {
 	srv := buildTestServer("")
 

@@ -20,7 +20,7 @@ type Config struct {
 	Retriever    InferRetriever
 	Pending      *PendingStore   // if nil, a new store is created
 	Health       HealthConfig    // Ollama + Qdrant pingers for GET /v1/health
-	BearerToken  string          // if non-empty, all non-health endpoints require Authorization: Bearer <token>
+	BearerToken  string          // if non-empty, protects /v1/route and /v1/infer (not /v1/trigger or /v1/feedback which use their own tokens)
 	ExtractWG    *sync.WaitGroup // if non-nil, trigger extraction goroutines are tracked for graceful shutdown
 	// LifecycleCtx is the server's lifecycle context. When cancelled (e.g. on
 	// SIGTERM), in-flight extraction goroutines spawned by /v1/trigger will
@@ -76,10 +76,18 @@ func Addr(host string, port int) string {
 	return fmt.Sprintf("%s:%d", host, port)
 }
 
+// bearerAuthExempt lists paths that have their own per-handler auth and must not
+// be double-checked by the mux-level ORCH_TOKEN middleware.
+var bearerAuthExempt = map[string]bool{
+	"/v1/health":   true,
+	"/healthz":     true,
+	"/v1/trigger":  true, // uses LLMO_TRIGGER_TOKEN via trigger.Handler
+	"/v1/feedback": true, // uses its own validation
+}
+
 func bearerAuth(token string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// /v1/health and /healthz are exempt from auth
-		if r.URL.Path == "/v1/health" || r.URL.Path == "/healthz" {
+		if bearerAuthExempt[r.URL.Path] {
 			next.ServeHTTP(w, r)
 			return
 		}
