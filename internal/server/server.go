@@ -78,8 +78,9 @@ func Addr(host string, port int) string {
 
 func bearerAuth(token string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// /v1/health and /healthz are exempt from auth
-		if r.URL.Path == "/v1/health" || r.URL.Path == "/healthz" {
+		// /v1/health, /healthz, /v1/trigger, /v1/feedback use their own token auth
+		if r.URL.Path == "/v1/health" || r.URL.Path == "/healthz" ||
+			r.URL.Path == "/v1/trigger" || r.URL.Path == "/v1/feedback" {
 			next.ServeHTTP(w, r)
 			return
 		}
