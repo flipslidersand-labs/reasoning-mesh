@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -36,11 +38,15 @@ type FeedbackRequest struct {
 type FeedbackHandler struct {
 	updater *knowledge.ScoreUpdater
 	pending PendingLookup
+	token   string // expected Bearer token; empty = auth disabled (matches /v1/trigger's fail-safe var)
 }
 
 // NewFeedbackHandler creates a FeedbackHandler.
+// The token is read from LLMO_TRIGGER_TOKEN (the same token required for
+// POST /v1/trigger) so a single secret protects both write endpoints and
+// unauthenticated callers cannot poison knowledge scores via /v1/feedback.
 func NewFeedbackHandler(updater *knowledge.ScoreUpdater, pending PendingLookup) *FeedbackHandler {
-	return &FeedbackHandler{updater: updater, pending: pending}
+	return &FeedbackHandler{updater: updater, pending: pending, token: os.Getenv("LLMO_TRIGGER_TOKEN")}
 }
 
 // ServeHTTP implements http.Handler.
@@ -48,6 +54,15 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	// Validate Bearer token when configured (see NewFeedbackHandler).
+	if h.token != "" {
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != h.token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	ctx, span := telemetry.Tracer("trigger/feedback").Start(r.Context(), "feedback")

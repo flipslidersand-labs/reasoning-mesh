@@ -21,6 +21,18 @@ func newTestUpdater() *knowledge.ScoreUpdater {
 	return knowledge.NewScoreUpdater((*qdrant.Client)(nil), "test", 8)
 }
 
+// feedbackRequest builds a POST /v1/feedback request with the shared test
+// TestMain (in handler_test.go) sets LLMO_TRIGGER_TOKEN to "test-token" for
+// the whole test binary, so authorized requests carry that bearer token.
+func feedbackRequest(body []byte, token string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/v1/feedback", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return req
+}
+
 func TestFeedbackHandler_OK(t *testing.T) {
 	u := newTestUpdater()
 	u.Start()
@@ -32,8 +44,7 @@ func TestFeedbackHandler_OK(t *testing.T) {
 		Outcome:      true,
 		Evaluator:    "ci",
 	})
-	req := httptest.NewRequest(http.MethodPost, "/v1/feedback", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := feedbackRequest(body, "test-token")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -47,13 +58,34 @@ func TestFeedbackHandler_OK(t *testing.T) {
 	}
 }
 
+func TestFeedbackHandler_Unauthorized_MissingToken(t *testing.T) {
+	u := newTestUpdater()
+	h := trigger.NewFeedbackHandler(u, nil)
+	body, _ := json.Marshal(trigger.FeedbackRequest{KnowledgeIDs: []string{validUUID1}, Outcome: true})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, feedbackRequest(body, ""))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d", rec.Code)
+	}
+}
+
+func TestFeedbackHandler_Unauthorized_WrongToken(t *testing.T) {
+	u := newTestUpdater()
+	h := trigger.NewFeedbackHandler(u, nil)
+	body, _ := json.Marshal(trigger.FeedbackRequest{KnowledgeIDs: []string{validUUID1}, Outcome: true})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, feedbackRequest(body, "wrong-token"))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d", rec.Code)
+	}
+}
+
 func TestFeedbackHandler_MissingIDs(t *testing.T) {
 	u := newTestUpdater()
 	h := trigger.NewFeedbackHandler(u, nil)
 	body, _ := json.Marshal(trigger.FeedbackRequest{KnowledgeIDs: nil, Outcome: true})
-	req := httptest.NewRequest(http.MethodPost, "/v1/feedback", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400, got %d", rec.Code)
 	}
@@ -66,9 +98,8 @@ func TestFeedbackHandler_InvalidKnowledgeID(t *testing.T) {
 		KnowledgeIDs: []string{"id-001"}, // not a UUID v4
 		Outcome:      true,
 	})
-	req := httptest.NewRequest(http.MethodPost, "/v1/feedback", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for invalid knowledge_id, got %d", rec.Code)
 	}
@@ -83,9 +114,8 @@ func TestFeedbackHandler_Evaluator(t *testing.T) {
 		Outcome:      false,
 		Evaluator:    "eval",
 	})
-	req := httptest.NewRequest(http.MethodPost, "/v1/feedback", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("want 202, got %d", rec.Code)
 	}
@@ -104,9 +134,8 @@ func TestFeedbackHandler_MethodNotAllowed(t *testing.T) {
 func TestFeedbackHandler_BadJSON(t *testing.T) {
 	u := newTestUpdater()
 	h := trigger.NewFeedbackHandler(u, nil)
-	req := httptest.NewRequest(http.MethodPost, "/v1/feedback", bytes.NewReader([]byte("{bad")))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, feedbackRequest([]byte("{bad"), "test-token"))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400, got %d", rec.Code)
 	}
@@ -122,9 +151,8 @@ func TestFeedbackHandler_ResponseCountMatchesIDs(t *testing.T) {
 		KnowledgeIDs: []string{validUUID1, validUUID2, validUUID3},
 		Outcome:      true,
 	})
-	req := httptest.NewRequest(http.MethodPost, "/v1/feedback", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
 
 	var resp map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
@@ -148,9 +176,8 @@ func TestFeedbackHandler_RequestIDResolution(t *testing.T) {
 	pending := &stubPending{ids: []string{"id-from-store"}}
 	h := trigger.NewFeedbackHandler(u, pending)
 	body, _ := json.Marshal(trigger.FeedbackRequest{RequestID: "req-001", Outcome: true})
-	req := httptest.NewRequest(http.MethodPost, "/v1/feedback", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("want 202, got %d — %s", rec.Code, rec.Body.String())
 	}
@@ -160,9 +187,8 @@ func TestFeedbackHandler_RequestIDNotFound(t *testing.T) {
 	u := newTestUpdater()
 	h := trigger.NewFeedbackHandler(u, &stubPending{ids: nil})
 	body, _ := json.Marshal(trigger.FeedbackRequest{RequestID: "unknown"})
-	req := httptest.NewRequest(http.MethodPost, "/v1/feedback", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 when request_id not found, got %d", rec.Code)
 	}
