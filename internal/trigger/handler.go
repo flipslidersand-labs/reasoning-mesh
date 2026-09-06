@@ -15,6 +15,7 @@ import (
 
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
+	"github.com/flipslidersand/reasoning-mesh/internal/validate"
 )
 
 // maxTriggerBodyBytes is the maximum allowed request body size for /v1/trigger.
@@ -96,6 +97,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if req.CommitSHA == "" {
 		span.SetStatus(codes.Error, "commit_sha required")
 		http.Error(w, "commit_sha required", http.StatusBadRequest)
+		return
+	}
+	if err := validate.CommitSHA(req.CommitSHA); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 

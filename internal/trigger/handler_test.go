@@ -24,7 +24,7 @@ func makeRequest(body string, token string) *http.Request {
 	return req
 }
 
-const validPayload = `{"commit_sha":"abc123","diff":"","ci_log":""}`
+const validPayload = `{"commit_sha":"abc1234","diff":"","ci_log":""}`
 
 func TestHandler_WithToken_AcceptsValidRequest(t *testing.T) {
 	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
@@ -86,6 +86,17 @@ func TestHandler_MissingCommitSHA(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, makeRequest(`{"diff":""}`, "test-token"))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d", rec.Code)
+	}
+}
+
+func TestHandler_InvalidCommitSHA(t *testing.T) {
+	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
+	h := NewHandler(nil, nil, nil)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, makeRequest(`{"commit_sha":"not-a-sha\n"}`, "test-token"))
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d", rec.Code)
 	}
