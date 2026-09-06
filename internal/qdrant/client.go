@@ -17,6 +17,10 @@ type Client struct {
 	http     *http.Client
 }
 
+// maxSearchResponseBytes caps the response body read for Search/GetByIDs so
+// an oversized or malicious Qdrant response cannot exhaust memory.
+const maxSearchResponseBytes = 16 << 20 // 16 MiB
+
 func New(endpoint string) *Client {
 	return NewWithTimeout(endpoint, 30*time.Second)
 }
@@ -169,7 +173,7 @@ func (c *Client) Search(ctx context.Context, collection string, vector []float32
 	var result struct {
 		Result []SearchResult `json:"result"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxSearchResponseBytes)).Decode(&result); err != nil {
 		return nil, err
 	}
 	return result.Result, nil
@@ -215,7 +219,7 @@ func (c *Client) GetByIDs(ctx context.Context, collection string, ids []string) 
 	var result struct {
 		Result []SearchResult `json:"result"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxSearchResponseBytes)).Decode(&result); err != nil {
 		return nil, err
 	}
 	return result.Result, nil

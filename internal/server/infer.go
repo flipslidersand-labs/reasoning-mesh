@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -51,6 +52,10 @@ type inferHandler struct {
 // maxInferBodyBytes is the maximum allowed request body size for /v1/infer and /v1/route.
 const maxInferBodyBytes = 1 << 20 // 1 MiB
 
+// maxTopK is the maximum allowed value for InferRequest.TopK. Values above
+// this are rejected with 400 Bad Request to bound Qdrant search cost/latency.
+const maxTopK = 50
+
 func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -90,6 +95,11 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	topK := req.TopK
 	if topK <= 0 {
 		topK = 3
+	}
+	if topK > maxTopK {
+		span.SetStatus(codes.Error, "top_k exceeds limit")
+		writeErr(w, fmt.Sprintf("top_k must be <= %d", maxTopK), http.StatusBadRequest)
+		return
 	}
 	span.SetAttributes(
 		attribute.String("task_type", string(taskType)),
