@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/flipslidersand/reasoning-mesh/internal/bench"
@@ -261,7 +262,7 @@ func splitComma(s string) []string {
 	start := 0
 	for i := 0; i <= len(s); i++ {
 		if i == len(s) || s[i] == ',' {
-			out = append(out, s[start:i])
+			out = append(out, strings.TrimSpace(s[start:i]))
 			start = i + 1
 		}
 	}
