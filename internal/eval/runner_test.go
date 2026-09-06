@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -273,7 +274,27 @@ func TestRunner_MultipleConditions(t *testing.T) {
 }
 
 func TestRunner_ContextCancelled_StopsEarly(t *testing.T) {
-	srv := ollamaServer(t, []string{"ans"})
+	// Each case triggers 2 Ollama calls (generate + judge, since makeCase sets
+	// a non-empty RootCause). Deterministically cancel the context once the
+	// first case's calls have completed, instead of racing a wall-clock sleep
+	// against the 100ms cooldown (which flakes under CI throttling/-race).
+	var reqCount int32
+	firstCaseDone := make(chan struct{})
+	var closeOnce sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&reqCount, 1)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"response":          "ans",
+			"done":              true,
+			"prompt_eval_count": 10,
+			"eval_count":        20,
+		})
+		if n >= 2 {
+			closeOnce.Do(func() { close(firstCaseDone) })
+		}
+	}))
+	defer srv.Close()
 	client := ollama.New(srv.URL, 10)
 
 	runner := NewRunnerWithRetrieverMap(client, RetrieverMap{}, []string{"m"}, []Condition{CondNoRAG}).
@@ -282,9 +303,8 @@ func TestRunner_ContextCancelled_StopsEarly(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cases := []Case{makeCase("c1", nil), makeCase("c2", nil), makeCase("c3", nil)}
 
-	// cancel after first result
 	go func() {
-		time.Sleep(10 * time.Millisecond)
+		<-firstCaseDone
 		cancel()
 	}()
 
