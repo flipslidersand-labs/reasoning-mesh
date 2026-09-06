@@ -167,9 +167,17 @@ func resolveConditions(flag string) []eval.Condition {
 	if flag == "all" || flag == "" {
 		return eval.AllConditions
 	}
+	valid := make(map[eval.Condition]bool, len(eval.AllConditions))
+	for _, c := range eval.AllConditions {
+		valid[c] = true
+	}
 	var conds []eval.Condition
 	for _, s := range splitComma(flag) {
-		conds = append(conds, eval.Condition(s))
+		c := eval.Condition(s)
+		if !valid[c] {
+			log.Fatalf("unknown condition: %s (valid: no-rag,cosine,score,compressed)", s)
+		}
+		conds = append(conds, c)
 	}
 	return conds
 }
