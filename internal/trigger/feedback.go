@@ -117,18 +117,33 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		attribute.String("request_id", req.RequestID),
 	)
 
-	h.updater.Send(knowledge.FeedbackEvent{
+	enqueued := h.updater.Send(knowledge.FeedbackEvent{
 		KnowledgeIDs: ids,
 		Outcome:      req.Outcome,
 		Evaluator:    req.Evaluator,
 	})
 	_ = ctx // span is derived from ctx; suppress unused warning
 
+	if !enqueued {
+		span.SetStatus(codes.Error, "score updater buffer full, feedback dropped")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		if err := json.NewEncoder(w).Encode(map[string]any{
+			"status":   "dropped",
+			"accepted": false,
+			"count":    len(ids),
+		}); err != nil {
+			log.Printf("feedback: encode response: %v", err)
+		}
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	if err := json.NewEncoder(w).Encode(map[string]any{
-		"status": "accepted",
-		"count":  len(ids),
+		"status":   "accepted",
+		"accepted": true,
+		"count":    len(ids),
 	}); err != nil {
 		log.Printf("feedback: encode response: %v", err)
 	}

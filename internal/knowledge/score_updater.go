@@ -31,6 +31,7 @@ type ScoreUpdater struct {
 	done       chan struct{}
 	stopOnce   sync.Once
 	started    atomic.Bool
+	dropped    atomic.Int64
 }
 
 // NewScoreUpdater creates a ScoreUpdater. Call Start() to begin processing.
@@ -61,12 +62,22 @@ func (u *ScoreUpdater) Stop() {
 }
 
 // Send enqueues a FeedbackEvent for async processing. Non-blocking if buffer is full.
-func (u *ScoreUpdater) Send(ev FeedbackEvent) {
+// It returns true if the event was enqueued, or false if it was dropped because the
+// buffer is full — callers must not treat a false return as success.
+func (u *ScoreUpdater) Send(ev FeedbackEvent) bool {
 	select {
 	case u.ch <- ev:
+		return true
 	default:
+		u.dropped.Add(1)
 		log.Printf("score_updater: buffer full, dropping feedback for %d IDs", len(ev.KnowledgeIDs))
+		return false
 	}
+}
+
+// Dropped returns the cumulative number of FeedbackEvents dropped due to a full buffer.
+func (u *ScoreUpdater) Dropped() int64 {
+	return u.dropped.Load()
 }
 
 func (u *ScoreUpdater) loop() {
