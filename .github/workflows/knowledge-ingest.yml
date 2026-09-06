@@ -3,6 +3,8 @@ name: Knowledge Ingest
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   test:
@@ -46,7 +48,7 @@ jobs:
   ingest:
     needs: test
     runs-on: ubuntu-latest
-    if: ${{ success() && vars.LLMO_TRIGGER_URL != '' }}
+    if: ${{ success() && github.event_name == 'push' && vars.LLMO_TRIGGER_URL != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
