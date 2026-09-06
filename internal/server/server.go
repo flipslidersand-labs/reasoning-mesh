@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"sync"
@@ -91,7 +92,7 @@ func bearerAuth(token string, next http.Handler) http.Handler {
 			return
 		}
 		auth := r.Header.Get("Authorization")
-		if auth != "Bearer "+token {
+		if subtle.ConstantTimeCompare([]byte(auth), []byte("Bearer "+token)) != 1 {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
