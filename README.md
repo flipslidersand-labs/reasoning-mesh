@@ -1,5 +1,8 @@
 # reasoning-mesh
 
+[![CI](https://github.com/flipslidersand/reasoning-mesh/actions/workflows/knowledge-ingest.yml/badge.svg)](https://github.com/flipslidersand/reasoning-mesh/actions/workflows/knowledge-ingest.yml)
+![coverage floor](https://img.shields.io/badge/coverage%20floor-40%25-blue)
+
 Software Engineering Experience Memory — multi-model LLM orchestration with knowledge accumulation from development outcomes.
 
 Routes engineering tasks to specialized LLM adapters, retrieves relevant past experience via RAG, and continuously learns from CI outcomes.
