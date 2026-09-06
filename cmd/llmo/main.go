@@ -15,6 +15,7 @@ import (
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/ollama"
 	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
+	"github.com/flipslidersand/reasoning-mesh/internal/validate"
 )
 
 func main() {
@@ -182,6 +183,12 @@ func runIngestLocal(cfg *config.Config, args []string) {
 	framework := fs.String("framework", "", "framework name (e.g. gin, actix)")
 	tagsFlag := fs.String("tags", "", "comma-separated tags")
 	_ = fs.Parse(args)
+
+	if err := validate.TaskType(*taskType); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fs.Usage()
+		os.Exit(1)
+	}
 
 	content := *contentFlag
 	if *fileFlag != "" {
