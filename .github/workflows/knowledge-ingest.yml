@@ -37,8 +37,8 @@ jobs:
           TOTAL=$(go tool cover -func=cover.out | awk '/^total:/{gsub(/%/,"",$3); print int($3)}')
           echo "Total coverage: ${TOTAL}%"
           echo "pct=${TOTAL}" >> "$GITHUB_OUTPUT"
-          if [ "${TOTAL}" -lt 40 ]; then
-            echo "::error::Coverage ${TOTAL}% is below minimum threshold of 40%"
+          if [ "${TOTAL}" -lt 50 ]; then
+            echo "::error::Coverage ${TOTAL}% is below minimum threshold of 50%"
             exit 1
           fi
 
@@ -49,7 +49,7 @@ jobs:
           script: |
             const MARKER = '<!-- coverage-comment -->';
             const pct = '${{ steps.coverage.outputs.pct }}';
-            const threshold = 40;
+            const threshold = 50;
             let body;
             if (pct === '') {
               body = MARKER + '\n### 📊 Go coverage\ncoverage 計測に失敗しました（Check coverage threshold ステップ未到達）';
