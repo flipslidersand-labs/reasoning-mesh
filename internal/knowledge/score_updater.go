@@ -117,23 +117,32 @@ func (u *ScoreUpdater) apply(ctx context.Context, ev FeedbackEvent) {
 
 	now := time.Now().UTC()
 
+	// Count occurrences per ID first so that duplicate IDs within the same
+	// event (e.g. from retries or reranking) accumulate their full
+	// contribution instead of each goroutine computing +1 from the same
+	// base payload and racing to overwrite one another (lost update).
+	occurrences := make(map[string]int, len(ev.KnowledgeIDs))
+	for _, id := range ev.KnowledgeIDs {
+		occurrences[id]++
+	}
+
 	// Parallelize UpdatePayload calls — each point has a distinct new payload so
 	// we cannot collapse them into a single batch write, but concurrent RPCs
 	// cut wall-clock time from O(N) serial to O(1) parallel. A semaphore caps
 	// the number of goroutines/in-flight RPCs in-flight at once.
 	sem := make(chan struct{}, maxConcurrentScoreUpdates)
 	var wg sync.WaitGroup
-	for _, id := range ev.KnowledgeIDs {
+	for id, count := range occurrences {
 		p, ok := payloadByID[id]
 		if !ok {
 			log.Printf("score_updater: ID %s not found in batch result", id)
 			continue
 		}
 
-		usageCount := payloadInt(p, "usage_count") + 1
+		usageCount := payloadInt(p, "usage_count") + count
 		successCount := payloadInt(p, "success_count")
 		if ev.Outcome {
-			successCount++
+			successCount += count
 		}
 		effective := (float64(successCount) + 2.0) / (float64(usageCount) + 4.0) // α=2, β=2
 
