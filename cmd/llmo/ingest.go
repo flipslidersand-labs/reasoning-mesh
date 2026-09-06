@@ -15,6 +15,11 @@ import (
 	"github.com/flipslidersand/reasoning-mesh/internal/config"
 )
 
+// maxIngestFileBytes is the maximum size accepted for --file ingestion.
+// It matches the server's maxTriggerBodyBytes limit for /v1/trigger, so
+// oversized files are rejected before being read into memory.
+const maxIngestFileBytes = 16 << 20 // 16 MiB
+
 type ingestRequest struct {
 	CommitSHA string `json:"commit_sha"`
 	Diff      string `json:"diff,omitempty"`
@@ -80,6 +85,14 @@ func runIngest(cfg *config.Config, args []string) error {
 
 func buildIngestPayload(commitRef, filePath string) (ingestRequest, error) {
 	if filePath != "" {
+		info, err := os.Stat(filePath)
+		if err != nil {
+			return ingestRequest{}, fmt.Errorf("stat file %s: %w", filePath, err)
+		}
+		if info.Size() > maxIngestFileBytes {
+			return ingestRequest{}, fmt.Errorf("file %s is %d bytes, exceeds max allowed size of %d bytes", filePath, info.Size(), maxIngestFileBytes)
+		}
+
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			return ingestRequest{}, fmt.Errorf("read file %s: %w", filePath, err)

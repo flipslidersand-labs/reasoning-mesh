@@ -77,6 +77,23 @@ func TestRunIngest_FileMissing(t *testing.T) {
 	}
 }
 
+func TestBuildIngestPayload_FileTooLarge(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "big*.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	if err := f.Truncate(maxIngestFileBytes + 1); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+
+	_, err = buildIngestPayload("", f.Name())
+	if err == nil {
+		t.Fatal("expected error for oversized file")
+	}
+}
+
 func TestBuildIngestPayload_FileContent(t *testing.T) {
 	f, _ := os.CreateTemp(t.TempDir(), "doc*.md")
 	_, _ = f.WriteString("hello world")
