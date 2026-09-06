@@ -2,6 +2,7 @@ package trigger
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +15,9 @@ import (
 	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
 	"github.com/flipslidersand/reasoning-mesh/internal/validate"
 )
+
+// maxFeedbackBodyBytes is the maximum allowed request body size for /v1/feedback.
+const maxFeedbackBodyBytes = 1 << 20 // 1 MiB
 
 // PendingLookup is the subset of server.PendingStore needed by the feedback handler.
 // Defined as an interface to avoid an import cycle (trigger → server).
@@ -68,9 +72,16 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, span := telemetry.Tracer("trigger/feedback").Start(r.Context(), "feedback")
 	defer span.End()
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxFeedbackBodyBytes)
+
 	var req FeedbackRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		span.SetStatus(codes.Error, err.Error())
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}

@@ -10,6 +10,11 @@ import (
 	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
 )
 
+// maxConcurrentScoreUpdates caps the number of concurrent Qdrant UpdatePayload
+// RPCs launched per apply() call, bounding goroutine/connection usage regardless
+// of how many knowledge_ids a single feedback event carries.
+const maxConcurrentScoreUpdates = 16
+
 // FeedbackEvent is emitted when an inference result is judged.
 type FeedbackEvent struct {
 	KnowledgeIDs []string // IDs that were used during inference
@@ -103,7 +108,9 @@ func (u *ScoreUpdater) apply(ctx context.Context, ev FeedbackEvent) {
 
 	// Parallelize UpdatePayload calls — each point has a distinct new payload so
 	// we cannot collapse them into a single batch write, but concurrent RPCs
-	// cut wall-clock time from O(N) serial to O(1) parallel.
+	// cut wall-clock time from O(N) serial to O(1) parallel. A semaphore caps
+	// the number of goroutines/in-flight RPCs in-flight at once.
+	sem := make(chan struct{}, maxConcurrentScoreUpdates)
 	var wg sync.WaitGroup
 	for _, id := range ev.KnowledgeIDs {
 		p, ok := payloadByID[id]
@@ -120,8 +127,10 @@ func (u *ScoreUpdater) apply(ctx context.Context, ev FeedbackEvent) {
 		effective := (float64(successCount) + 2.0) / (float64(usageCount) + 4.0) // α=2, β=2
 
 		wg.Add(1)
+		sem <- struct{}{}
 		go func(id string, usage, success int, rate float64) {
 			defer wg.Done()
+			defer func() { <-sem }()
 			if err := u.qdrant.UpdatePayload(ctx, u.collection, id, map[string]any{
 				"usage_count":   usage,
 				"success_count": success,

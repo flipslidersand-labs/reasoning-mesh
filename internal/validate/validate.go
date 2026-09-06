@@ -47,8 +47,14 @@ func KnowledgeID(id string) error {
 	return nil
 }
 
-// KnowledgeIDs validates every ID in the slice.
+// MaxKnowledgeIDs is the maximum number of knowledge_ids accepted in a single request.
+const MaxKnowledgeIDs = 128
+
+// KnowledgeIDs validates every ID in the slice and enforces MaxKnowledgeIDs.
 func KnowledgeIDs(ids []string) error {
+	if len(ids) > MaxKnowledgeIDs {
+		return fmt.Errorf("too many knowledge_ids: %d exceeds maximum of %d", len(ids), MaxKnowledgeIDs)
+	}
 	for _, id := range ids {
 		if err := KnowledgeID(id); err != nil {
 			return err
