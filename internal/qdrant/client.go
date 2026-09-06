@@ -75,7 +75,7 @@ func (c *Client) BulkUpsert(ctx context.Context, collection string, pts []Upsert
 	}
 	raw := make([]point, len(pts))
 	for i, p := range pts {
-		raw[i] = point{ID: p.ID, Vector: p.Vector, Payload: p.Payload}
+		raw[i] = point(p)
 	}
 	body, err := json.Marshal(upsertRequest{Points: raw})
 	if err != nil {

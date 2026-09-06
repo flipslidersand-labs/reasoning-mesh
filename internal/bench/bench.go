@@ -70,11 +70,6 @@ func ComputeDeltas(runs []RunEntry) []Delta {
 		return nil
 	}
 
-	type key struct {
-		Model     string
-		Condition eval.Condition
-	}
-
 	first := indexByKey(runs[0].Summaries)
 	last := indexByKey(runs[len(runs)-1].Summaries)
 
