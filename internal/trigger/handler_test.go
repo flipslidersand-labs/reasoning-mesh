@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+
+	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 )
 
 func TestMain(m *testing.M) {
@@ -99,6 +101,28 @@ func TestHandler_InvalidCommitSHA(t *testing.T) {
 	h.ServeHTTP(rec, makeRequest(`{"commit_sha":"not-a-sha\n"}`, "test-token"))
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d", rec.Code)
+	}
+}
+
+func TestHandler_ConcurrencyLimit_Returns429(t *testing.T) {
+	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
+	h := NewHandler(&knowledge.Extractor{}, nil, nil)
+
+	// Saturate the semaphore directly to simulate maxConcurrentExtractions
+	// in-flight extractions without needing a real (slow) Extractor.Run.
+	for i := 0; i < maxConcurrentExtractions; i++ {
+		h.sem <- struct{}{}
+	}
+	defer func() {
+		for i := 0; i < maxConcurrentExtractions; i++ {
+			<-h.sem
+		}
+	}()
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, makeRequest(validPayload, "test-token"))
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("want 429, got %d", rec.Code)
 	}
 }
 

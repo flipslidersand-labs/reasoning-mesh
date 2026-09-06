@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -22,6 +23,14 @@ import (
 // maxTriggerBodyBytes is the maximum allowed request body size for /v1/trigger.
 // diff and ci_log can be large (monorepo diffs, long build logs) but must be bounded.
 const maxTriggerBodyBytes = 16 << 20 // 16 MiB
+
+// maxConcurrentExtractions caps in-flight Extractor.Run goroutines so a burst
+// of CI triggers can't pile up unbounded load on the shared Ollama/Qdrant instances.
+const maxConcurrentExtractions = 4
+
+// extractionTimeout bounds a single Extractor.Run call so a stuck downstream
+// dependency can't hold a concurrency slot indefinitely.
+const extractionTimeout = 5 * time.Minute
 
 // TriggerRequest is the JSON body sent by CI on a green build.
 type TriggerRequest struct {
@@ -36,6 +45,7 @@ type Handler struct {
 	token     string          // expected Bearer token; empty = auth disabled (warn at startup)
 	wg        *sync.WaitGroup // optional; tracks in-flight extraction goroutines
 	ctx       context.Context // server lifecycle context; cancelled on shutdown
+	sem       chan struct{}   // bounds concurrent extraction goroutines
 }
 
 // NewHandler creates a trigger Handler.
@@ -52,7 +62,7 @@ func NewHandler(extractor *knowledge.Extractor, wg *sync.WaitGroup, ctx context.
 	if token == "" {
 		log.Fatalf("LLMO_TRIGGER_TOKEN is not set — refusing to start with unauthenticated /v1/trigger")
 	}
-	return &Handler{extractor: extractor, token: token, wg: wg, ctx: ctx}
+	return &Handler{extractor: extractor, token: token, wg: wg, ctx: ctx, sem: make(chan struct{}, maxConcurrentExtractions)}
 }
 
 // Wait blocks until all in-flight extraction goroutines complete.
@@ -115,15 +125,29 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Run extraction asynchronously using the server's lifecycle context so
 	// that the goroutine is cancelled when the server shuts down, preventing leaks.
+	// A semaphore bounds concurrent extractions so a burst of triggers can't
+	// pile up unbounded load on the shared Ollama/Qdrant instances; a request
+	// that finds the semaphore full is rejected rather than queued so callers
+	// (CI) get immediate backpressure instead of unbounded goroutine growth.
 	if h.extractor != nil {
+		select {
+		case h.sem <- struct{}{}:
+		default:
+			span.SetStatus(codes.Error, "extraction concurrency limit reached")
+			http.Error(w, "too many concurrent extractions, retry later", http.StatusTooManyRequests)
+			return
+		}
 		if h.wg != nil {
 			h.wg.Add(1)
 		}
 		go func() {
+			defer func() { <-h.sem }()
 			if h.wg != nil {
 				defer h.wg.Done()
 			}
-			if err := h.extractor.Run(h.ctx, req.CommitSHA, req.Diff, req.CILog); err != nil {
+			ctx, cancel := context.WithTimeout(h.ctx, extractionTimeout)
+			defer cancel()
+			if err := h.extractor.Run(ctx, req.CommitSHA, req.Diff, req.CILog); err != nil {
 				log.Printf("trigger: extractor error for %s: %v", req.CommitSHA, err)
 			}
 		}()
