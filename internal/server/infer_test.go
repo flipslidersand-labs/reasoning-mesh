@@ -22,20 +22,23 @@ func (s *stubRetriever) Retrieve(_ context.Context, _ string, _ eval.TaskType, _
 	return s.items, nil
 }
 
-func buildInferServer(retriever server.InferRetriever, token string) http.Handler {
+func buildInferServer(t *testing.T, retriever server.InferRetriever, token string) http.Handler {
+	t.Helper()
 	stub := &stubAdapter{name: "stub-model"}
 	r := router.New(router.Config{Default: stub})
-	return server.Build(server.Config{
+	srv, pending := server.Build(server.Config{
 		Router:      r,
 		Retriever:   retriever,
 		BearerToken: token,
 	})
+	t.Cleanup(pending.Stop)
+	return srv
 }
 
 // --- POST /v1/infer ---
 
 func TestInfer_OK_NoRAG(t *testing.T) {
-	srv := buildInferServer(nil, "")
+	srv := buildInferServer(t, nil, "")
 	body, _ := json.Marshal(server.InferRequest{Prompt: "implement auth middleware", TaskType: "implementation"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/infer", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -63,7 +66,7 @@ func TestInfer_OK_WithRAG(t *testing.T) {
 		{ID: "ki-001", Content: "use sync.Mutex for concurrency"},
 		{ID: "ki-002", Content: "prefer context.WithTimeout"},
 	}}
-	srv := buildInferServer(retriever, "")
+	srv := buildInferServer(t, retriever, "")
 	body, _ := json.Marshal(server.InferRequest{Prompt: "fix race condition", TaskType: "debugging", TopK: 2})
 	req := httptest.NewRequest(http.MethodPost, "/v1/infer", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -85,7 +88,7 @@ func TestInfer_OK_WithRAG(t *testing.T) {
 
 func TestInfer_DefaultTaskType(t *testing.T) {
 	// task_type omitted → defaults to implementation
-	srv := buildInferServer(nil, "")
+	srv := buildInferServer(t, nil, "")
 	body, _ := json.Marshal(map[string]string{"prompt": "add a login endpoint"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/infer", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -97,7 +100,7 @@ func TestInfer_DefaultTaskType(t *testing.T) {
 }
 
 func TestInfer_EmptyPrompt(t *testing.T) {
-	srv := buildInferServer(nil, "")
+	srv := buildInferServer(t, nil, "")
 	body, _ := json.Marshal(server.InferRequest{Prompt: "   "})
 	req := httptest.NewRequest(http.MethodPost, "/v1/infer", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -109,7 +112,7 @@ func TestInfer_EmptyPrompt(t *testing.T) {
 }
 
 func TestInfer_BadJSON(t *testing.T) {
-	srv := buildInferServer(nil, "")
+	srv := buildInferServer(t, nil, "")
 	req := httptest.NewRequest(http.MethodPost, "/v1/infer", bytes.NewReader([]byte("{bad")))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -120,7 +123,7 @@ func TestInfer_BadJSON(t *testing.T) {
 }
 
 func TestInfer_MethodNotAllowed(t *testing.T) {
-	srv := buildInferServer(nil, "")
+	srv := buildInferServer(t, nil, "")
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/infer", nil))
 	if rec.Code != http.StatusMethodNotAllowed {
@@ -129,7 +132,7 @@ func TestInfer_MethodNotAllowed(t *testing.T) {
 }
 
 func TestInfer_BearerAuth(t *testing.T) {
-	srv := buildInferServer(nil, "tok")
+	srv := buildInferServer(t, nil, "tok")
 	body, _ := json.Marshal(server.InferRequest{Prompt: "hello"})
 
 	// no token → 401
@@ -151,7 +154,7 @@ func TestInfer_BearerAuth(t *testing.T) {
 }
 
 func TestInfer_BodyTooLarge(t *testing.T) {
-	srv := buildInferServer(nil, "")
+	srv := buildInferServer(t, nil, "")
 
 	// Build a payload larger than 1 MiB.
 	large := make([]byte, (1<<20)+1)
@@ -169,7 +172,7 @@ func TestInfer_BodyTooLarge(t *testing.T) {
 }
 
 func TestInfer_InvalidTaskType(t *testing.T) {
-	srv := buildInferServer(nil, "")
+	srv := buildInferServer(t, nil, "")
 	body, _ := json.Marshal(server.InferRequest{Prompt: "hello", TaskType: "unknown-type"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/infer", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

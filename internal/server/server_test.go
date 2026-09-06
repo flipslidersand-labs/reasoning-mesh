@@ -37,20 +37,23 @@ type errPinger struct{}
 
 func (errPinger) Ping(_ context.Context) error { return context.DeadlineExceeded }
 
-func buildTestServer(token string) http.Handler {
+func buildTestServer(t *testing.T, token string) http.Handler {
+	t.Helper()
 	stub := &stubAdapter{name: "stub"}
 	r := router.New(router.Config{Default: stub})
-	return server.Build(server.Config{
-		Router: r,
-		Health: server.HealthConfig{Ollama: okPinger{}, Qdrant: okPinger{}},
+	srv, pending := server.Build(server.Config{
+		Router:      r,
+		Health:      server.HealthConfig{Ollama: okPinger{}, Qdrant: okPinger{}},
 		BearerToken: token,
 	})
+	t.Cleanup(pending.Stop)
+	return srv
 }
 
 // --- GET /v1/health ---
 
 func TestHealth_OK(t *testing.T) {
-	srv := buildTestServer("")
+	srv := buildTestServer(t, "")
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/health", nil))
 
@@ -70,10 +73,11 @@ func TestHealth_OK(t *testing.T) {
 func TestHealth_Degraded(t *testing.T) {
 	stub := &stubAdapter{name: "stub"}
 	r := router.New(router.Config{Default: stub})
-	srv := server.Build(server.Config{
+	srv, pending := server.Build(server.Config{
 		Router: r,
 		Health: server.HealthConfig{Ollama: errPinger{}, Qdrant: okPinger{}},
 	})
+	t.Cleanup(pending.Stop)
 
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/health", nil))
@@ -92,7 +96,7 @@ func TestHealth_Degraded(t *testing.T) {
 }
 
 func TestHealth_MethodNotAllowed(t *testing.T) {
-	srv := buildTestServer("")
+	srv := buildTestServer(t, "")
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/health", nil))
 	if rec.Code != http.StatusMethodNotAllowed {
@@ -103,7 +107,7 @@ func TestHealth_MethodNotAllowed(t *testing.T) {
 // --- POST /v1/route ---
 
 func TestRoute_OK(t *testing.T) {
-	srv := buildTestServer("")
+	srv := buildTestServer(t, "")
 
 	body, _ := json.Marshal(server.RouteRequest{
 		Task:    "このCIエラーの原因を調べて",
@@ -128,7 +132,7 @@ func TestRoute_OK(t *testing.T) {
 }
 
 func TestRoute_EmptyTask(t *testing.T) {
-	srv := buildTestServer("")
+	srv := buildTestServer(t, "")
 	body, _ := json.Marshal(server.RouteRequest{Task: "  "})
 	req := httptest.NewRequest(http.MethodPost, "/v1/route", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -140,7 +144,7 @@ func TestRoute_EmptyTask(t *testing.T) {
 }
 
 func TestRoute_BadJSON(t *testing.T) {
-	srv := buildTestServer("")
+	srv := buildTestServer(t, "")
 	req := httptest.NewRequest(http.MethodPost, "/v1/route", bytes.NewReader([]byte("{bad")))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -151,7 +155,7 @@ func TestRoute_BadJSON(t *testing.T) {
 }
 
 func TestRoute_MethodNotAllowed(t *testing.T) {
-	srv := buildTestServer("")
+	srv := buildTestServer(t, "")
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/route", nil))
 	if rec.Code != http.StatusMethodNotAllowed {
@@ -186,7 +190,8 @@ func TestRoute_TaskTypeInference(t *testing.T) {
 		Implementation: &stubAdapter{name: "impl-adapter"},
 		Default:        &stubAdapter{name: "impl-adapter"},
 	})
-	srv := server.Build(server.Config{Router: r})
+	srv, pending := server.Build(server.Config{Router: r})
+	t.Cleanup(pending.Stop)
 
 	for _, tc := range cases {
 		body, _ := json.Marshal(server.RouteRequest{Task: tc.task})
@@ -209,7 +214,7 @@ func TestRoute_TaskTypeInference(t *testing.T) {
 // --- Bearer auth ---
 
 func TestBearerAuth_Missing(t *testing.T) {
-	srv := buildTestServer("secret")
+	srv := buildTestServer(t, "secret")
 	body, _ := json.Marshal(server.RouteRequest{Task: "hello"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/route", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
@@ -220,7 +225,7 @@ func TestBearerAuth_Missing(t *testing.T) {
 }
 
 func TestBearerAuth_Valid(t *testing.T) {
-	srv := buildTestServer("secret")
+	srv := buildTestServer(t, "secret")
 	body, _ := json.Marshal(server.RouteRequest{Task: "hello"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/route", bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer secret")
@@ -232,7 +237,7 @@ func TestBearerAuth_Valid(t *testing.T) {
 }
 
 func TestBearerAuth_HealthExempt(t *testing.T) {
-	srv := buildTestServer("secret")
+	srv := buildTestServer(t, "secret")
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/health", nil))
 	if rec.Code != http.StatusOK {
@@ -241,7 +246,7 @@ func TestBearerAuth_HealthExempt(t *testing.T) {
 }
 
 func TestRoute_BodyTooLarge(t *testing.T) {
-	srv := buildTestServer("")
+	srv := buildTestServer(t, "")
 
 	// Build a payload larger than 1 MiB.
 	large := make([]byte, (1<<20)+1)

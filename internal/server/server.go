@@ -30,7 +30,13 @@ type Config struct {
 }
 
 // Build constructs the HTTP mux with all registered routes.
-func Build(cfg Config) http.Handler {
+//
+// It also returns the *PendingStore in effect for this server: either
+// cfg.Pending (if non-nil) or one newly created here. NewPendingStore starts
+// a background sweepLoop goroutine that only exits when Stop() is called, so
+// callers must arrange to call Stop() on the returned store (directly, or via
+// cfg.Pending's own lifecycle if they supplied one) to avoid leaking it.
+func Build(cfg Config) (http.Handler, *PendingStore) {
 	mux := http.NewServeMux()
 
 	pending := cfg.Pending
@@ -68,7 +74,7 @@ func Build(cfg Config) http.Handler {
 	if cfg.BearerToken != "" {
 		handler = bearerAuth(cfg.BearerToken, mux)
 	}
-	return logRequests(handler)
+	return logRequests(handler), pending
 }
 
 // Addr returns the listen address from host and port.

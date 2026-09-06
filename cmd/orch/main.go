@@ -151,7 +151,9 @@ func run(cfg *config.Config) error {
 	defer lifecycleCancel()
 
 	// --- HTTP Server ---
-	handler := server.Build(server.Config{
+	// The returned *PendingStore is the same pending we already own (since
+	// we pass it in via cfg.Pending above); its Stop() is deferred already.
+	handler, _ := server.Build(server.Config{
 		Router:       r,
 		Extractor:    extractor,
 		ScoreUpdater: updater,
