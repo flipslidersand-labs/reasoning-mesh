@@ -154,10 +154,19 @@ func fmtLatency(v float64) string {
 	return fmt.Sprintf("%s%.0fms", sign, v)
 }
 
-func indexByKey(summaries []eval.Summary) map[struct{ Model string; Condition eval.Condition }]eval.Summary {
-	m := map[struct{ Model string; Condition eval.Condition }]eval.Summary{}
+func indexByKey(summaries []eval.Summary) map[struct {
+	Model     string
+	Condition eval.Condition
+}]eval.Summary {
+	m := map[struct {
+		Model     string
+		Condition eval.Condition
+	}]eval.Summary{}
 	for _, s := range summaries {
-		m[struct{ Model string; Condition eval.Condition }{s.Model, s.Condition}] = s
+		m[struct {
+			Model     string
+			Condition eval.Condition
+		}{s.Model, s.Condition}] = s
 	}
 	return m
 }

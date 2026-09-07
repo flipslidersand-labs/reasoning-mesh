@@ -28,19 +28,19 @@ type GenerateOptions struct {
 }
 
 type GenerateRequest struct {
-	Model   string          `json:"model"`
-	Prompt  string          `json:"prompt"`
-	Stream  bool            `json:"stream"`
+	Model   string           `json:"model"`
+	Prompt  string           `json:"prompt"`
+	Stream  bool             `json:"stream"`
 	Options *GenerateOptions `json:"options,omitempty"`
 }
 
 type GenerateResponse struct {
-	Model              string `json:"model"`
-	Response           string `json:"response"`
-	Done               bool   `json:"done"`
-	PromptEvalCount    int    `json:"prompt_eval_count"`
-	EvalCount          int    `json:"eval_count"`
-	TotalDurationNs    int64  `json:"total_duration"`
+	Model           string `json:"model"`
+	Response        string `json:"response"`
+	Done            bool   `json:"done"`
+	PromptEvalCount int    `json:"prompt_eval_count"`
+	EvalCount       int    `json:"eval_count"`
+	TotalDurationNs int64  `json:"total_duration"`
 }
 
 type ChatMessage struct {

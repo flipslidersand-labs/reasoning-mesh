@@ -33,7 +33,7 @@ type InferRequest struct {
 
 // InferResponse is the JSON response for POST /v1/infer.
 type InferResponse struct {
-	RequestID    string   `json:"request_id"`    // use in POST /v1/feedback for linkage
+	RequestID    string   `json:"request_id"` // use in POST /v1/feedback for linkage
 	Answer       string   `json:"answer"`
 	Model        string   `json:"model"`
 	PromptTokens int      `json:"prompt_tokens"`

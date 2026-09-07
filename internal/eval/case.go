@@ -28,8 +28,8 @@ type Case struct {
 		Snippet   string `yaml:"snippet"`
 	} `yaml:"context"`
 	Expected struct {
-		RootCause        string   `yaml:"root_cause"`
-		RequiredKeywords []string `yaml:"required_keywords"`
+		RootCause         string   `yaml:"root_cause"`
+		RequiredKeywords  []string `yaml:"required_keywords"`
 		ForbiddenKeywords []string `yaml:"forbidden_keywords"`
 	} `yaml:"expected"`
 }

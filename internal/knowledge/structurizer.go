@@ -21,7 +21,7 @@ type StructuredChunk struct {
 
 // Structurizer uses qwen2.5:7b to extract metadata from raw chunks.
 type Structurizer struct {
-	client    *ollama.Client
+	client      *ollama.Client
 	routerModel string
 }
 

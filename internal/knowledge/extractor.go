@@ -19,11 +19,11 @@ const defaultUpsertBatchSize = 32
 
 // Extractor is the full pipeline: chunk → structure → dedup ID → embed → upsert.
 type Extractor struct {
-	chunker        func(diff, ciLog string) []Chunk
-	structurizer   *Structurizer
-	embedder       *Embedder
-	qdrant         *qdrant.Client
-	collection     string
+	chunker         func(diff, ciLog string) []Chunk
+	structurizer    *Structurizer
+	embedder        *Embedder
+	qdrant          *qdrant.Client
+	collection      string
 	upsertBatchSize int
 }
 
@@ -83,8 +83,8 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 
 		// Structurize all chunks in this batch first, skipping failures.
 		type structuredItem struct {
-			sc  StructuredChunk
-			id  string
+			sc StructuredChunk
+			id string
 		}
 		items := make([]structuredItem, 0, len(batch))
 		texts := make([]string, 0, len(batch))

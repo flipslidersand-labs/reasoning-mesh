@@ -11,10 +11,10 @@ func TestScorer_EffectiveSuccess(t *testing.T) {
 	cfg := knowledge.DefaultScorerConfig() // α=2, β=2
 
 	cases := []struct {
-		name         string
-		usage, succ  int
-		wantApprox   float64
-		tolerance    float64
+		name        string
+		usage, succ int
+		wantApprox  float64
+		tolerance   float64
 	}{
 		// 0/0 → effective = (0+2)/(0+2+2) = 0.5, sqrt(0.5)≈0.707
 		{"cold start 0/0", 0, 0, 0.707, 0.01},

@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	claudeAPIURL      = "https://api.anthropic.com/v1/messages"
-	claudeAPIVersion  = "2023-06-01"
+	claudeAPIURL       = "https://api.anthropic.com/v1/messages"
+	claudeAPIVersion   = "2023-06-01"
 	claudeDefaultModel = "claude-sonnet-4-6"
-	claudeMaxTokens   = 4096
+	claudeMaxTokens    = 4096
 )
 
 // ClaudeAdapter calls the Anthropic Messages API.

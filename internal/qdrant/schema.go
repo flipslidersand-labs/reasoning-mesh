@@ -52,13 +52,13 @@ const (
 // ExperiencePayload is the Qdrant payload for the experience collection.
 // Common fields are defined here; Failure Memory operational logic is in internal/knowledge.
 type ExperiencePayload struct {
-	Content      string        `json:"content"`
-	TaskType     TaskType      `json:"task_type"`
+	Content       string        `json:"content"`
+	TaskType      TaskType      `json:"task_type"`
 	OutcomeStatus OutcomeStatus `json:"outcome_status"`
 	// Failure Memory fields (populated by internal/knowledge/experience.go)
-	FailureType          FailureType `json:"failure_type,omitempty"`
-	Evaluator            string      `json:"evaluator,omitempty"` // ci | human | llm
-	Confidence           float64     `json:"confidence,omitempty"`
-	RelatedKnowledgeIDs  []string    `json:"related_knowledge_ids,omitempty"`
-	CreatedAt            time.Time   `json:"created_at"`
+	FailureType         FailureType `json:"failure_type,omitempty"`
+	Evaluator           string      `json:"evaluator,omitempty"` // ci | human | llm
+	Confidence          float64     `json:"confidence,omitempty"`
+	RelatedKnowledgeIDs []string    `json:"related_knowledge_ids,omitempty"`
+	CreatedAt           time.Time   `json:"created_at"`
 }

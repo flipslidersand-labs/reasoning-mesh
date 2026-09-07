@@ -41,14 +41,14 @@ type SummaryKey struct {
 }
 
 type Summary struct {
-	Model         string    `json:"model"`
-	Condition     Condition `json:"condition"`
-	Count         int       `json:"count"`
-	AvgLatencyMS  float64   `json:"avg_latency_ms"`
-	TotalTokens   int       `json:"total_tokens"`
-	AvgRecall     float64   `json:"avg_recall"`
-	AvgAccuracy   float64   `json:"avg_accuracy"` // -1 if not scored
-	ErrorCount    int       `json:"error_count"`
+	Model        string    `json:"model"`
+	Condition    Condition `json:"condition"`
+	Count        int       `json:"count"`
+	AvgLatencyMS float64   `json:"avg_latency_ms"`
+	TotalTokens  int       `json:"total_tokens"`
+	AvgRecall    float64   `json:"avg_recall"`
+	AvgAccuracy  float64   `json:"avg_accuracy"` // -1 if not scored
+	ErrorCount   int       `json:"error_count"`
 }
 
 type RunSummary struct {
@@ -73,14 +73,14 @@ func (r Result) keywordRecall(answer string, keywords []string) float64 {
 
 func ComputeSummaries(results []Result) []Summary {
 	type agg struct {
-		latency    int64
-		tokens     int
-		recall     float64
-		accuracy   float64
-		accCount   int
-		errors     int
-		count      int
-		succCount  int // count excluding errors
+		latency   int64
+		tokens    int
+		recall    float64
+		accuracy  float64
+		accCount  int
+		errors    int
+		count     int
+		succCount int // count excluding errors
 	}
 	m := map[SummaryKey]*agg{}
 	for _, r := range results {
