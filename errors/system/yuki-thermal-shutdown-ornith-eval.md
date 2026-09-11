@@ -8,7 +8,7 @@ date: "2026-08-22"
 ## 症状
 
 ornith:9b × 4条件 × 21ケース (= 63リクエスト) を連続実行すると
-YUKI (RTX4070, 192.168.68.56) がシャットダウンする。
+YUKI (RTX4070) がシャットダウンする。
 eval runner が並列リクエストを送るとモデルスワップ (ornith↔qwen) が発生し
 GPU が 190W / CPU ThermalState=3 に達して ACPI 熱シャットダウン。
 
