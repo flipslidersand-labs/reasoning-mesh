@@ -1,5 +1,5 @@
 # verify-ollama-service.ps1
-# Run on YUKI (192.168.68.56) to confirm OllamaService is correctly configured.
+# Run on YUKI to confirm OllamaService is correctly configured.
 # Usage: powershell -ExecutionPolicy Bypass -File verify-ollama-service.ps1
 
 $ErrorActionPreference = "Stop"
