@@ -1,0 +1,19 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# runner は qa-workflows 側で vars.GATE_RUNNER (org: linux-general) → ubuntu-latest を自動選択する
+jobs:
+  go-test:
+    uses: flipslidersand-labs/qa-workflows/.github/workflows/go-test.yml@main
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      go-version: "1.25"
+      coverage-threshold: 0
+      test-flags: "-race -count=1 -timeout 120s"
