@@ -3,4 +3,13 @@ repos:
     rev: v0.5.1
     hooks:
       - id: go-fmt
+  - repo: local
+    hooks:
+      # golangci-lint が未導入の環境では警告だけ出して通す(ADR-016: 環境エラーで commit を止めない)。
+      # 導入済みなら従来どおり検査する。CI は常に検査する。導入手順は docs の golangci-lint 節を参照。
       - id: golangci-lint
+        name: golangci-lint (未導入ならスキップ)
+        entry: sh -c 'command -v golangci-lint >/dev/null 2>&1 || { echo "WARN golangci-lint 未導入のためスキップ(CI で検査されます)"; exit 0; }; golangci-lint run ./...'
+        language: system
+        types: [go]
+        pass_filenames: false
