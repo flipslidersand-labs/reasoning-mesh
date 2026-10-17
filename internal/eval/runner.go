@@ -37,6 +37,16 @@ func isTransientNetworkErr(err error) bool {
 
 const topK = 3
 
+// responseStylePrompt is prepended to every eval prompt sent to the model under
+// test. It targets the Type C (code-only output) and Type A (missing Japanese
+// explanation for English technical terms) failure patterns documented in
+// docs/ornith-improvement.md.
+const responseStylePrompt = `コードを含む回答は、必ず日本語の説明を先に書き、その後にコードを示すこと。
+goroutine, channel, lifetime, borrow, interface のような技術用語は英語のまま使い、
+可能であれば対応する日本語の説明（例: interface（インターフェース））も併記すること。
+
+`
+
 // RetrieverMap maps each condition to its Retriever.
 // Conditions not present in the map fall back to NoopRetriever.
 type RetrieverMap map[Condition]Retriever
@@ -216,6 +226,8 @@ func (r *Runner) runOne(ctx context.Context, c Case, model string, cond Conditio
 func (r *Runner) buildPrompt(ctx context.Context, c Case, cond Condition) (promptResult, error) {
 	var sb strings.Builder
 	var knowledgeIDs []string
+
+	sb.WriteString(responseStylePrompt)
 
 	if cond != CondNoRAG {
 		items, err := r.retrieverFor(cond).Retrieve(ctx, c.Prompt, c.TaskType, topK)
