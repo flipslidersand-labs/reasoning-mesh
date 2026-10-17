@@ -7,6 +7,7 @@ Usage:
 """
 
 import json
+import os
 import subprocess
 import urllib.request
 import sys
@@ -23,7 +24,7 @@ NODES = {
         "ssh": None,
     },
     "YUKI": {
-        "host": "192.168.68.56",
+        "host": os.environ.get("YUKI_HOST", "127.0.0.1"),
         "ollama_port": 11434,
         "gpu": "RTX4070 12GB",
         "role": "ナレッジ先輩",
@@ -31,7 +32,7 @@ NODES = {
         "windows": True,
     },
     "DS1": {
-        "host": "192.168.68.60",
+        "host": os.environ.get("DS1_HOST", "127.0.0.1"),
         "ollama_port": 11434,
         "gpu": "RTX4060",
         "role": "職人くん",
