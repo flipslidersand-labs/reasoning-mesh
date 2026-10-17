@@ -35,7 +35,7 @@ jobs:
         id: tests
         run: |
           go test -race ./... -coverprofile=cover.out -count=1 2>&1 | tee /tmp/test.log
-          exit ${PIPESTATUS[0]}
+          exit "${PIPESTATUS[0]}"
 
       - name: Check coverage threshold
         id: coverage
