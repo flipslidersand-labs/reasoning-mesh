@@ -23,7 +23,7 @@ NODES = {
         "ssh": None,
     },
     "YUKI": {
-        "host": "192.168.68.56",
+        "host": "<internal-host>",
         "ollama_port": 11434,
         "gpu": "RTX4070 12GB",
         "role": "ナレッジ先輩",
@@ -31,7 +31,7 @@ NODES = {
         "windows": True,
     },
     "DS1": {
-        "host": "192.168.68.60",
+        "host": "<internal-host>",
         "ollama_port": 11434,
         "gpu": "RTX4060",
         "role": "職人くん",
