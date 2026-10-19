@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.GATE_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: read
       pull-requests: write
@@ -83,7 +83,7 @@ jobs:
 
   ingest:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.GATE_RUNNER || 'ubuntu-latest' }}
     if: ${{ success() && github.event_name == 'push' && vars.LLMO_TRIGGER_URL != '' }}
     steps:
       - uses: actions/checkout@v4
