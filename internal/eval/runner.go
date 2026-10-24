@@ -273,10 +273,33 @@ func (r *Runner) buildPrompt(ctx context.Context, c Case, cond Condition) (promp
 
 // judgeAccuracy uses r.models[0] to score the answer against the expected output (0.0-1.0).
 // Returns -1 on error (judge unavailable), so callers can distinguish "not scored" from 0.
+// keywordExpectation renders required_keywords for the judge, keeping the
+// comma-separated synonym groups as alternatives ("a or b") to match the OR
+// semantics of keywordRecall.
+func keywordExpectation(keywords []string) string {
+	var groups []string
+	for _, kw := range keywords {
+		var alts []string
+		for _, alt := range strings.Split(kw, ",") {
+			if alt = strings.TrimSpace(alt); alt != "" {
+				alts = append(alts, alt)
+			}
+		}
+		switch len(alts) {
+		case 0:
+		case 1:
+			groups = append(groups, alts[0])
+		default:
+			groups = append(groups, "("+strings.Join(alts, " または ")+" のいずれか)")
+		}
+	}
+	return "must include: " + strings.Join(groups, ", ")
+}
+
 func (r *Runner) judgeAccuracy(ctx context.Context, c Case, answer string) float64 {
 	expected := c.Expected.RootCause
 	if expected == "" && len(c.Expected.RequiredKeywords) > 0 {
-		expected = "must include: " + strings.Join(c.Expected.RequiredKeywords, ", ")
+		expected = keywordExpectation(c.Expected.RequiredKeywords)
 	}
 	if expected == "" {
 		return -1
