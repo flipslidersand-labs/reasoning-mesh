@@ -37,6 +37,16 @@ func isTransientNetworkErr(err error) bool {
 
 const topK = 3
 
+// responseStylePrompt is prepended to every eval prompt sent to the model under
+// test. It targets the Type C (code-only output) and Type A (missing Japanese
+// explanation for English technical terms) failure patterns documented in
+// docs/ornith-improvement.md.
+const responseStylePrompt = `コードを含む回答は、必ず日本語の説明を先に書き、その後にコードを示すこと。
+goroutine, channel, lifetime, borrow, interface のような技術用語は英語のまま使い、
+可能であれば対応する日本語の説明（例: interface（インターフェース））も併記すること。
+
+`
+
 // RetrieverMap maps each condition to its Retriever.
 // Conditions not present in the map fall back to NoopRetriever.
 type RetrieverMap map[Condition]Retriever
@@ -217,6 +227,8 @@ func (r *Runner) buildPrompt(ctx context.Context, c Case, cond Condition) (promp
 	var sb strings.Builder
 	var knowledgeIDs []string
 
+	sb.WriteString(responseStylePrompt)
+
 	if cond != CondNoRAG {
 		items, err := r.retrieverFor(cond).Retrieve(ctx, c.Prompt, c.TaskType, topK)
 		if err != nil {
@@ -261,10 +273,33 @@ func (r *Runner) buildPrompt(ctx context.Context, c Case, cond Condition) (promp
 
 // judgeAccuracy uses r.models[0] to score the answer against the expected output (0.0-1.0).
 // Returns -1 on error (judge unavailable), so callers can distinguish "not scored" from 0.
+// keywordExpectation renders required_keywords for the judge, keeping the
+// comma-separated synonym groups as alternatives ("a or b") to match the OR
+// semantics of keywordRecall.
+func keywordExpectation(keywords []string) string {
+	var groups []string
+	for _, kw := range keywords {
+		var alts []string
+		for _, alt := range strings.Split(kw, ",") {
+			if alt = strings.TrimSpace(alt); alt != "" {
+				alts = append(alts, alt)
+			}
+		}
+		switch len(alts) {
+		case 0:
+		case 1:
+			groups = append(groups, alts[0])
+		default:
+			groups = append(groups, "("+strings.Join(alts, " または ")+" のいずれか)")
+		}
+	}
+	return "must include: " + strings.Join(groups, ", ")
+}
+
 func (r *Runner) judgeAccuracy(ctx context.Context, c Case, answer string) float64 {
 	expected := c.Expected.RootCause
 	if expected == "" && len(c.Expected.RequiredKeywords) > 0 {
-		expected = "must include: " + strings.Join(c.Expected.RequiredKeywords, ", ")
+		expected = keywordExpectation(c.Expected.RequiredKeywords)
 	}
 	if expected == "" {
 		return -1
