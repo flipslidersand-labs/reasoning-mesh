@@ -28,6 +28,11 @@ and will refuse to run against this repo.
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
 ```
 
+`go install` puts the binary in `$GOBIN` (default `$GOPATH/bin`, i.e.
+`$HOME/go/bin`). Make sure that directory is on your `PATH`
+(e.g. `export PATH="$PATH:$(go env GOPATH)/bin"`), or the hook will not find
+it and will skip with a "未導入" warning instead of linting.
+
 If this fails with `the Go language version (go1.2x) used to build
 golangci-lint is lower than the targeted Go version`, see
 [`errors/go/golangci-lint-go-version-mismatch.md`](errors/go/golangci-lint-go-version-mismatch.md)
