@@ -258,13 +258,9 @@ func runBench(args []string) {
 }
 
 func splitComma(s string) []string {
-	var out []string
-	start := 0
-	for i := 0; i <= len(s); i++ {
-		if i == len(s) || s[i] == ',' {
-			out = append(out, strings.TrimSpace(s[start:i]))
-			start = i + 1
-		}
+	out := strings.Split(s, ",")
+	for i := range out {
+		out[i] = strings.TrimSpace(out[i])
 	}
 	return out
 }
