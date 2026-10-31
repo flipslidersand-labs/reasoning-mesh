@@ -70,6 +70,9 @@ type point struct {
 
 // BulkUpsert writes multiple points in a single HTTP PUT request.
 func (c *Client) BulkUpsert(ctx context.Context, collection string, pts []UpsertPoint) error {
+	if err := validate.CollectionName(collection); err != nil {
+		return err
+	}
 	if len(pts) == 0 {
 		return nil
 	}
