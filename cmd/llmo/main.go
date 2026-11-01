@@ -146,12 +146,7 @@ func buildRetrieverMap(ctx context.Context, cfg *config.Config) eval.RetrieverMa
 	}
 
 	emb := knowledge.NewEmbedderWithAuth(cfg.Embedder.Endpoint, cfg.Embedder.APIKey, cfg.Embedder.Collection)
-	scorer := knowledge.ScorerConfig{
-		Alpha:           cfg.Scorer.Alpha,
-		Beta:            cfg.Scorer.Beta,
-		FreshnessLambda: cfg.Scorer.FreshnessLambda,
-		TaskBoost:       cfg.Scorer.TaskBoost,
-	}
+	scorer := cfg.Scorer
 	col := cfg.Qdrant.Collections["knowledge"]
 
 	rm[eval.CondCosine] = knowledge.NewQdrantRetriever(qc, emb, col, scorer, eval.CondCosine)
