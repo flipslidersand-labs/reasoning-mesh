@@ -70,3 +70,26 @@ func TestScorer_TaskBoost(t *testing.T) {
 		t.Errorf("task boost ratio=%.4f, want %.4f", ratio, cfg.TaskBoost)
 	}
 }
+
+// EffectiveSuccess is the single source of truth shared by Score() and
+// ScoreUpdater.apply(); a non-default prior must change it (#211).
+func TestScorerConfig_EffectiveSuccess_UsesConfiguredPrior(t *testing.T) {
+	cfg := knowledge.ScorerConfig{Alpha: 1.0, Beta: 3.0}
+	got := cfg.EffectiveSuccess(10, 4) // (4+1)/(10+1+3)
+	want := 5.0 / 14.0
+	if math.Abs(got-want) > 1e-9 {
+		t.Fatalf("EffectiveSuccess = %v, want %v", got, want)
+	}
+	if def := knowledge.DefaultScorerConfig().EffectiveSuccess(10, 4); math.Abs(def-got) < 1e-9 {
+		t.Fatalf("default prior gave the same value %v; prior is ignored", def)
+	}
+}
+
+func TestScorerConfig_Score_MatchesEffectiveSuccess(t *testing.T) {
+	cfg := knowledge.ScorerConfig{Alpha: 1.0, Beta: 3.0, FreshnessLambda: 0, TaskBoost: 1}
+	got := cfg.Score(1.0, 10, 4, 0, false)
+	want := math.Sqrt(cfg.EffectiveSuccess(10, 4))
+	if math.Abs(got-want) > 1e-9 {
+		t.Fatalf("Score = %v, want %v", got, want)
+	}
+}

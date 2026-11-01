@@ -19,13 +19,21 @@ func DefaultScorerConfig() ScorerConfig {
 	}
 }
 
+// EffectiveSuccess returns the Beta-prior-smoothed success rate
+// (success + α) / (usage + α + β). It is shared by Score() and
+// ScoreUpdater.apply() so the stored success_rate and the retrieval score
+// never diverge.
+func (cfg ScorerConfig) EffectiveSuccess(usageCount, successCount int) float64 {
+	return (float64(successCount) + cfg.Alpha) / (float64(usageCount) + cfg.Alpha + cfg.Beta)
+}
+
 // Score computes the final retrieval score for a knowledge item.
 //
 //	final_score = cosine_sim × sqrt(effective_success) × freshness × task_boost
 //	effective_success = (success_count + α) / (usage_count + α + β)
 //	freshness = exp(-λ × days_since_last_used)
 func (cfg ScorerConfig) Score(cosineSim float64, usageCount, successCount int, daysSinceLastUsed float64, taskMatch bool) float64 {
-	effectiveSuccess := (float64(successCount) + cfg.Alpha) / (float64(usageCount) + cfg.Alpha + cfg.Beta)
+	effectiveSuccess := cfg.EffectiveSuccess(usageCount, successCount)
 	freshness := math.Exp(-cfg.FreshnessLambda * daysSinceLastUsed)
 
 	boost := 1.0
