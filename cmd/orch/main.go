@@ -96,7 +96,7 @@ func run(cfg *config.Config) error {
 	retriever := knowledge.NewQdrantRetriever(qdrantClient, embedder, knowledgeCol, scorer, "score")
 
 	// --- Score Updater ---
-	updater := knowledge.NewScoreUpdater(qdrantClient, knowledgeCol, 256)
+	updater := knowledge.NewScoreUpdater(qdrantClient, knowledgeCol, 256).WithScorerConfig(scorer)
 	updater.Start()
 	defer updater.Stop()
 
