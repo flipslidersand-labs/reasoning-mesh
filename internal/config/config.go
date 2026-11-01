@@ -45,7 +45,10 @@ type OllamaConfig struct {
 }
 
 type QdrantConfig struct {
-	Endpoint    string            `yaml:"endpoint"`
+	Endpoint string `yaml:"endpoint"`
+	// APIKey is sent as the api-key header when set (use ${QDRANT_API_KEY}).
+	// Empty = unauthenticated Qdrant.
+	APIKey      string            `yaml:"api_key"`
 	Collections map[string]string `yaml:"collections"`
 	// UpsertBatchSize controls how many points are sent per BulkUpsert call
 	// in Extractor.Run. Default 0 means the extractor uses its built-in default (32).

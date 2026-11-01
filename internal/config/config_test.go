@@ -192,3 +192,18 @@ func TestLoad_ScorerSectionDecodesAllFields(t *testing.T) {
 		t.Fatalf("scorer = %+v, want 1.5/2.5/0.03/1.7", s)
 	}
 }
+
+func TestLoad_QdrantAPIKeyFromEnv(t *testing.T) {
+	t.Setenv("QDRANT_API_KEY", "k-from-env")
+	path := t.TempDir() + "/config.yaml"
+	if err := os.WriteFile(path, []byte("qdrant:\n  api_key: \"${QDRANT_API_KEY}\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Qdrant.APIKey != "k-from-env" {
+		t.Fatalf("APIKey = %q, want k-from-env", cfg.Qdrant.APIKey)
+	}
+}
