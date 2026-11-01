@@ -9,6 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/validate"
 )
 
@@ -30,11 +31,11 @@ func expandEnv(s string) string {
 }
 
 type Config struct {
-	Ollama   OllamaConfig   `yaml:"ollama"`
-	Qdrant   QdrantConfig   `yaml:"qdrant"`
-	Embedder EmbedderConfig `yaml:"embedder"`
-	Server   ServerConfig   `yaml:"server"`
-	Scorer   ScorerConfig   `yaml:"scorer"`
+	Ollama   OllamaConfig           `yaml:"ollama"`
+	Qdrant   QdrantConfig           `yaml:"qdrant"`
+	Embedder EmbedderConfig         `yaml:"embedder"`
+	Server   ServerConfig           `yaml:"server"`
+	Scorer   knowledge.ScorerConfig `yaml:"scorer"`
 }
 
 type OllamaConfig struct {
@@ -65,13 +66,6 @@ type EmbedderConfig struct {
 type ServerConfig struct {
 	Host string `yaml:"host"`
 	Port int    `yaml:"port"`
-}
-
-type ScorerConfig struct {
-	Alpha           float64 `yaml:"alpha"`
-	Beta            float64 `yaml:"beta"`
-	FreshnessLambda float64 `yaml:"freshness_lambda"`
-	TaskBoost       float64 `yaml:"task_boost"`
 }
 
 // Validate returns an error listing all missing or invalid required fields.
