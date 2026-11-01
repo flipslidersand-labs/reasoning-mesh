@@ -81,17 +81,6 @@ func TestRouter_NilFallsBackToDefault(t *testing.T) {
 	}
 }
 
-func TestCodexAdapter_NotImplemented(t *testing.T) {
-	a := router.NewCodexAdapter("")
-	if a.Name() != "codex/gpt-4o" {
-		t.Errorf("unexpected name: %s", a.Name())
-	}
-	_, err := a.Generate(context.Background(), "hello")
-	if err == nil {
-		t.Error("expected error from CodexAdapter.Generate")
-	}
-}
-
 func TestOllamaAdapter_Name(t *testing.T) {
 	// Tests OllamaAdapter.Name() without making a real HTTP call.
 	a := router.NewOllamaAdapter(nil, "qwen2.5:7b")

@@ -61,21 +61,6 @@ type Runner struct {
 	feedbackSender FeedbackSender // optional; nil = no auto-feedback
 }
 
-// NewRunner creates a Runner that uses the same retriever for all RAG conditions.
-func NewRunner(ollamaClient *ollama.Client, retriever Retriever, models []string) *Runner {
-	return NewRunnerWithConditions(ollamaClient, retriever, models, AllConditions)
-}
-
-// NewRunnerWithConditions creates a Runner with a single retriever for all RAG conditions.
-func NewRunnerWithConditions(ollamaClient *ollama.Client, retriever Retriever, models []string, conditions []Condition) *Runner {
-	rm := RetrieverMap{
-		CondCosine:     retriever,
-		CondScore:      retriever,
-		CondCompressed: retriever,
-	}
-	return NewRunnerWithRetrieverMap(ollamaClient, rm, models, conditions)
-}
-
 // NewRunnerWithRetrieverMap creates a Runner with per-condition retrievers.
 // Use this when cosine and score conditions need different QdrantRetriever instances.
 func NewRunnerWithRetrieverMap(ollamaClient *ollama.Client, rm RetrieverMap, models []string, conditions []Condition) *Runner {

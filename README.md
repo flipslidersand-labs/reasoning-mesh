@@ -1,6 +1,6 @@
 # reasoning-mesh
 
-[![CI](https://github.com/flipslidersand/reasoning-mesh/actions/workflows/knowledge-ingest.yml/badge.svg)](https://github.com/flipslidersand/reasoning-mesh/actions/workflows/knowledge-ingest.yml)
+[![CI](https://github.com/flipslidersand-labs/reasoning-mesh/actions/workflows/knowledge-ingest.yml/badge.svg)](https://github.com/flipslidersand-labs/reasoning-mesh/actions/workflows/knowledge-ingest.yml)
 ![coverage floor](https://img.shields.io/badge/coverage%20floor-40%25-blue)
 
 Software Engineering Experience Memory — multi-model LLM orchestration with knowledge accumulation from development outcomes.
@@ -41,7 +41,7 @@ llmo CLI / CI trigger
 ## Setup / セットアップ
 
 ```bash
-git clone https://github.com/flipslidersand/reasoning-mesh
+git clone https://github.com/flipslidersand-labs/reasoning-mesh
 cd reasoning-mesh
 go build ./...
 cp config/config.yaml.example config/config.yaml
