@@ -122,7 +122,7 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 				Vector: vectors[i],
 				Payload: map[string]any{
 					"content":       item.sc.Content,
-					"task_type":     string(toQdrantTaskType(item.sc.TaskType)),
+					"task_type":     string(item.sc.TaskType),
 					"language":      item.sc.Language,
 					"framework":     item.sc.Framework,
 					"source":        "ci",
@@ -171,19 +171,4 @@ func deterministicID(taskType eval.TaskType, content string) string {
 	h := sha256.Sum256([]byte(combined))
 	// Use first 16 bytes (128 bits) formatted as UUID hex (no dashes)
 	return fmt.Sprintf("%x", h[:16])
-}
-
-func toQdrantTaskType(t eval.TaskType) qdrant.TaskType {
-	switch t {
-	case eval.TaskDebugging:
-		return qdrant.TaskDebugging
-	case eval.TaskImplementation:
-		return qdrant.TaskImplementation
-	case eval.TaskArchitecture:
-		return qdrant.TaskArchitecture
-	case eval.TaskTesting:
-		return qdrant.TaskTesting
-	default:
-		return qdrant.TaskImplementation
-	}
 }

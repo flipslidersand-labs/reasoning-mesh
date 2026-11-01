@@ -1,17 +1,20 @@
 package qdrant
 
-import "time"
+import (
+	"time"
 
-// TaskType represents the category of a knowledge item.
-type TaskType string
+	"github.com/flipslidersand/reasoning-mesh/internal/tasktype"
+)
+
+// TaskType represents the category of a knowledge item. It is the same type as
+// eval.TaskType (see package tasktype), so no conversion is needed.
+type TaskType = tasktype.Type
 
 const (
-	TaskImplementation TaskType = "implementation"
-	TaskArchitecture   TaskType = "architecture"
-	TaskDebugging      TaskType = "debugging"
-	TaskErrors         TaskType = "errors"
-	TaskTesting        TaskType = "testing"
-	TaskDecisions      TaskType = "decisions"
+	TaskImplementation = tasktype.Implementation
+	TaskArchitecture   = tasktype.Architecture
+	TaskDebugging      = tasktype.Debugging
+	TaskTesting        = tasktype.Testing
 )
 
 // KnowledgePayload is the Qdrant payload for the knowledge collection.
