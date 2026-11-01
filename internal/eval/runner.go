@@ -56,6 +56,7 @@ type Runner struct {
 	ollama         *ollama.Client
 	retrievers     RetrieverMap
 	models         []string
+	judgeModel     string // scores answers and compresses knowledge; see WithJudgeModel
 	conditions     []Condition
 	cooldown       time.Duration
 	feedbackSender FeedbackSender // optional; nil = no auto-feedback
@@ -64,13 +65,35 @@ type Runner struct {
 // NewRunnerWithRetrieverMap creates a Runner with per-condition retrievers.
 // Use this when cosine and score conditions need different QdrantRetriever instances.
 func NewRunnerWithRetrieverMap(ollamaClient *ollama.Client, rm RetrieverMap, models []string, conditions []Condition) *Runner {
+	judge := ""
+	if len(models) > 0 {
+		judge = models[0] // baseline methodology; override with WithJudgeModel
+	}
 	return &Runner{
 		ollama:     ollamaClient,
 		retrievers: rm,
 		models:     models,
+		judgeModel: judge,
 		conditions: conditions,
 		cooldown:   5 * time.Second,
 	}
+}
+
+// WithJudgeModel sets the model that scores answers and compresses knowledge.
+// The default is models[0] (the original baseline methodology); set it
+// explicitly so a single-model run does not grade its own answers (#213).
+func (r *Runner) WithJudgeModel(m string) *Runner {
+	r.judgeModel = m
+	return r
+}
+
+// JudgeModel returns the model used for judging and knowledge compression.
+func (r *Runner) JudgeModel() string { return r.judgeModel }
+
+// SelfJudging reports whether the only model under test is also its own judge,
+// which makes accuracy incomparable with baselines judged by another model.
+func (r *Runner) SelfJudging() bool {
+	return len(r.models) == 1 && r.models[0] == r.judgeModel
 }
 
 // WithCooldown sets the inter-request cooldown to prevent GPU thermal throttling.
@@ -256,7 +279,7 @@ func (r *Runner) buildPrompt(ctx context.Context, c Case, cond Condition) (promp
 	return promptResult{Prompt: sb.String(), KnowledgeIDs: knowledgeIDs}, nil
 }
 
-// judgeAccuracy uses r.models[0] to score the answer against the expected output (0.0-1.0).
+// judgeAccuracy uses r.judgeModel to score the answer against the expected output (0.0-1.0).
 // Returns -1 on error (judge unavailable), so callers can distinguish "not scored" from 0.
 // keywordExpectation renders required_keywords for the judge, keeping the
 // comma-separated synonym groups as alternatives ("a or b") to match the OR
@@ -299,9 +322,7 @@ func (r *Runner) judgeAccuracy(ctx context.Context, c Case, answer string) float
 この回答は期待される内容を正しく含んでいますか？
 0.0（全く不正解）から1.0（完全正解）の数値のみ返してください。数値以外は出力しないでください。`, expected, answer)
 
-	// Use the same model as the eval target to avoid model swapping on a shared Ollama instance.
-	judgeModel := r.models[0]
-	raw, err := r.ollama.Generate(ctx, judgeModel, judgePrompt)
+	raw, err := r.ollama.Generate(ctx, r.judgeModel, judgePrompt)
 	if err != nil {
 		return -1
 	}
@@ -328,5 +349,5 @@ func (r *Runner) compressKnowledge(ctx context.Context, items []KnowledgeItem) (
 		"以下のナレッジを1段落（200字以内）に要約してください。重要な技術キーワードを保持すること。\n\n%s",
 		raw.String(),
 	)
-	return r.ollama.Generate(ctx, r.models[0], compressPrompt)
+	return r.ollama.Generate(ctx, r.judgeModel, compressPrompt)
 }

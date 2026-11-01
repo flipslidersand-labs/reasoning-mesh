@@ -33,3 +33,14 @@ go run ./cmd/llmo eval -models qwen2.5:7b,ornith:9b -conditions no-rag
 これで `qwen2.5:7b` が judge、`ornith:9b`（と `qwen2.5:7b` 自身）が
 評価対象として実行される。`-models` を省略すれば config.yaml の
 `router,knowledge` 順がデフォルトで使われ、同じ構成になる。
+
+## 恒久対応(#213)
+
+`-judge-model` で judge を明示できる。単一モデルを評価しつつ別モデルで採点する場合:
+
+```bash
+go run ./cmd/llmo eval -models ornith:9b -judge-model qwen2.5:7b -conditions no-rag
+```
+
+`-judge-model` を省略すると従来どおり `-models` の先頭が judge になる(ベースラインと同じ方法論)。
+単一モデルがそのまま judge になる構成では、実行時に自己採点の警告が出る。
