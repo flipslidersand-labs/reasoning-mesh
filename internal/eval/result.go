@@ -57,6 +57,10 @@ type RunSummary struct {
 	Summaries []Summary `json:"summaries"`
 }
 
+// keywordRecall scores each required_keywords entry as a hit if any of its
+// comma-separated alternatives (e.g. "testable,テスト可能") appears in the
+// answer, so a case can accept an English term or its Japanese equivalent
+// without inflating the denominator.
 func (r Result) keywordRecall(answer string, keywords []string) float64 {
 	if len(keywords) == 0 {
 		return 1.0
@@ -64,8 +68,15 @@ func (r Result) keywordRecall(answer string, keywords []string) float64 {
 	lower := strings.ToLower(answer)
 	hit := 0
 	for _, kw := range keywords {
-		if strings.Contains(lower, strings.ToLower(kw)) {
-			hit++
+		for _, alt := range strings.Split(kw, ",") {
+			alt = strings.TrimSpace(alt)
+			if alt == "" {
+				continue
+			}
+			if strings.Contains(lower, strings.ToLower(alt)) {
+				hit++
+				break
+			}
 		}
 	}
 	return float64(hit) / float64(len(keywords))
