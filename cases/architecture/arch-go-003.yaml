@@ -10,6 +10,6 @@ expected:
   required_keywords:
     - 環境変数
     - config
-    - priority
-    - testable
-    - interface
+    - priority,優先順位
+    - testable,テスト可能
+    - interface,インターフェース
