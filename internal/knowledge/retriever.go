@@ -3,6 +3,7 @@ package knowledge
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/flipslidersand/reasoning-mesh/internal/eval"
@@ -99,12 +100,9 @@ func (r *QdrantRetriever) computeScore(hit qdrant.SearchResult, taskType eval.Ta
 	return r.scorer.Score(hit.Score, usageCount, successCount, days, taskMatch)
 }
 
+// sortByScore は Score 降順に並べる。同点は入力順を保つ(安定)。
 func sortByScore(items []eval.KnowledgeItem) {
-	for i := 1; i < len(items); i++ {
-		for j := i; j > 0 && items[j].Score > items[j-1].Score; j-- {
-			items[j], items[j-1] = items[j-1], items[j]
-		}
-	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Score > items[j].Score })
 }
 
 func payloadInt(p map[string]any, key string) int {
