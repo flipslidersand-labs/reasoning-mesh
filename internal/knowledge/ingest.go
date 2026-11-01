@@ -8,6 +8,7 @@ import (
 
 	"github.com/flipslidersand/reasoning-mesh/internal/eval"
 	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
+	"github.com/flipslidersand/reasoning-mesh/internal/tasktype"
 )
 
 // IngestEntry is a manually authored knowledge item.
@@ -46,6 +47,9 @@ func (s *IngestStore) Ingest(ctx context.Context, entry IngestEntry) (string, er
 	if entry.TaskType == "" {
 		entry.TaskType = eval.TaskImplementation
 	}
+	if !tasktype.Valid(entry.TaskType) {
+		return "", fmt.Errorf("invalid task_type %q", entry.TaskType)
+	}
 
 	vectors, err := s.embedder.Embed(ctx, []string{entry.Content})
 	if err != nil {
@@ -59,7 +63,7 @@ func (s *IngestStore) Ingest(ctx context.Context, entry IngestEntry) (string, er
 	now := time.Now().UTC()
 	payload := map[string]any{
 		"content":       entry.Content,
-		"task_type":     string(toQdrantTaskType(entry.TaskType)),
+		"task_type":     string(entry.TaskType),
 		"language":      entry.Language,
 		"framework":     entry.Framework,
 		"source":        "manual",
