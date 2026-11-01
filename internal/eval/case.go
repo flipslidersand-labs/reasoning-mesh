@@ -7,15 +7,18 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/flipslidersand/reasoning-mesh/internal/tasktype"
 )
 
-type TaskType string
+// TaskType is the shared task category; see package tasktype.
+type TaskType = tasktype.Type
 
 const (
-	TaskDebugging      TaskType = "debugging"
-	TaskImplementation TaskType = "implementation"
-	TaskArchitecture   TaskType = "architecture"
-	TaskTesting        TaskType = "testing"
+	TaskDebugging      = tasktype.Debugging
+	TaskImplementation = tasktype.Implementation
+	TaskArchitecture   = tasktype.Architecture
+	TaskTesting        = tasktype.Testing
 )
 
 type Case struct {
