@@ -174,3 +174,21 @@ func TestLoad_SizeLimit(t *testing.T) {
 		t.Errorf("error should mention size limit: %v", err)
 	}
 }
+
+// The scorer: section is decoded straight into knowledge.ScorerConfig (#210);
+// guard the yaml tags so a rename cannot silently zero the parameters.
+func TestLoad_ScorerSectionDecodesAllFields(t *testing.T) {
+	path := t.TempDir() + "/config.yaml"
+	y := "scorer:\n  alpha: 1.5\n  beta: 2.5\n  freshness_lambda: 0.03\n  task_boost: 1.7\n"
+	if err := os.WriteFile(path, []byte(y), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	s := cfg.Scorer
+	if s.Alpha != 1.5 || s.Beta != 2.5 || s.FreshnessLambda != 0.03 || s.TaskBoost != 1.7 {
+		t.Fatalf("scorer = %+v, want 1.5/2.5/0.03/1.7", s)
+	}
+}

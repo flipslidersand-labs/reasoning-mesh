@@ -2,12 +2,13 @@ package knowledge
 
 import "math"
 
-// ScorerConfig holds Beta distribution and freshness parameters.
+// ScorerConfig holds Beta distribution and freshness parameters. It is also the
+// config.yaml `scorer:` schema, so config and runtime share one definition.
 type ScorerConfig struct {
-	Alpha           float64 // Beta prior alpha (default 2.0)
-	Beta            float64 // Beta prior beta  (default 2.0)
-	FreshnessLambda float64 // decay rate per day (default 0.01)
-	TaskBoost       float64 // multiplier when task_type matches (default 1.5)
+	Alpha           float64 `yaml:"alpha"`            // Beta prior alpha (default 2.0)
+	Beta            float64 `yaml:"beta"`             // Beta prior beta  (default 2.0)
+	FreshnessLambda float64 `yaml:"freshness_lambda"` // decay rate per day (default 0.01)
+	TaskBoost       float64 `yaml:"task_boost"`       // multiplier when task_type matches (default 1.5)
 }
 
 func DefaultScorerConfig() ScorerConfig {

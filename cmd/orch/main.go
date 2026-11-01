@@ -84,12 +84,7 @@ func run(cfg *config.Config) error {
 	embedder := knowledge.NewEmbedderWithAuth(cfg.Embedder.Endpoint, cfg.Embedder.APIKey, cfg.Embedder.Collection)
 
 	// --- Scorer ---
-	scorer := knowledge.ScorerConfig{
-		Alpha:           cfg.Scorer.Alpha,
-		Beta:            cfg.Scorer.Beta,
-		FreshnessLambda: cfg.Scorer.FreshnessLambda,
-		TaskBoost:       cfg.Scorer.TaskBoost,
-	}
+	scorer := cfg.Scorer
 
 	// --- Knowledge Retriever (Score condition for production) ---
 	knowledgeCol := cfg.Qdrant.Collections["knowledge"]
