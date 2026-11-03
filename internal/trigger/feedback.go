@@ -1,6 +1,8 @@
 package trigger
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log"
@@ -38,6 +40,20 @@ type FeedbackRequest struct {
 	Evaluator    string   `json:"evaluator,omitempty"` // e.g. "ci", "eval", "human"
 }
 
+// bearerTokenMatches reports whether the Authorization header value is
+// "Bearer <token>" with the expected token. Both sides are SHA-256 hashed
+// before a constant-time compare so neither content nor length of the
+// expected token leaks through timing (ConstantTimeCompare returns early
+// on a length mismatch).
+func bearerTokenMatches(auth, token string) bool {
+	if !strings.HasPrefix(auth, "Bearer ") {
+		return false
+	}
+	got := sha256.Sum256([]byte(strings.TrimPrefix(auth, "Bearer ")))
+	want := sha256.Sum256([]byte(token))
+	return subtle.ConstantTimeCompare(got[:], want[:]) == 1
+}
+
 // FeedbackHandler handles POST /v1/feedback.
 type FeedbackHandler struct {
 	updater *knowledge.ScoreUpdater
@@ -63,7 +79,7 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Validate Bearer token when configured (see NewFeedbackHandler).
 	if h.token != "" {
 		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != h.token {
+		if !bearerTokenMatches(auth, h.token) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

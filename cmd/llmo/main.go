@@ -77,6 +77,7 @@ func runEval(cfg *config.Config, args []string) {
 	casesDir := fs.String("cases", "cases", "directory containing YAML test cases")
 	outDir := fs.String("out", "results", "directory to write JSON results")
 	modelsFlag := fs.String("models", "", "comma-separated model names (default: router+knowledge from config)")
+	judgeFlag := fs.String("judge-model", "", "model that scores answers (default: first of -models; a single model then grades itself)")
 	condFlag := fs.String("conditions", "all", "conditions to run: all | no-rag | cosine | score | compressed")
 	cooldownSec := fs.Int("cooldown", 5, "seconds to wait between requests (increase to prevent GPU thermal throttling)")
 	_ = fs.Parse(args)
@@ -103,6 +104,15 @@ func runEval(cfg *config.Config, args []string) {
 	rm := buildRetrieverMap(ctx, cfg)
 	runner := eval.NewRunnerWithRetrieverMap(ollamaClient, rm, models, conditions).
 		WithCooldown(time.Duration(*cooldownSec) * time.Second)
+	if *judgeFlag != "" {
+		runner.WithJudgeModel(*judgeFlag)
+	}
+	if runner.JudgeModel() == "" {
+		log.Fatalf("no judge model: pass -models or -judge-model")
+	}
+	if runner.SelfJudging() {
+		log.Printf("WARN: %q judges its own answers; accuracy is not comparable with baselines (pass -judge-model)", runner.JudgeModel())
+	}
 	results := runner.Run(ctx, cases)
 
 	fmt.Println()
@@ -129,19 +139,14 @@ func buildRetrieverMap(ctx context.Context, cfg *config.Config) eval.RetrieverMa
 		eval.CondCompressed: noop,
 	}
 
-	qc := qdrant.New(cfg.Qdrant.Endpoint)
+	qc := qdrant.New(cfg.Qdrant.Endpoint).WithAPIKey(cfg.Qdrant.APIKey)
 	if err := qc.Ping(ctx); err != nil {
 		log.Printf("WARN: Qdrant unreachable (%v) — RAG conditions will use NoopRetriever", err)
 		return rm
 	}
 
 	emb := knowledge.NewEmbedderWithAuth(cfg.Embedder.Endpoint, cfg.Embedder.APIKey, cfg.Embedder.Collection)
-	scorer := knowledge.ScorerConfig{
-		Alpha:           cfg.Scorer.Alpha,
-		Beta:            cfg.Scorer.Beta,
-		FreshnessLambda: cfg.Scorer.FreshnessLambda,
-		TaskBoost:       cfg.Scorer.TaskBoost,
-	}
+	scorer := cfg.Scorer
 	col := cfg.Qdrant.Collections["knowledge"]
 
 	rm[eval.CondCosine] = knowledge.NewQdrantRetriever(qc, emb, col, scorer, eval.CondCosine)
@@ -215,7 +220,7 @@ func runIngestLocal(cfg *config.Config, args []string) {
 
 	ctx := context.Background()
 
-	qc := qdrant.New(cfg.Qdrant.Endpoint)
+	qc := qdrant.New(cfg.Qdrant.Endpoint).WithAPIKey(cfg.Qdrant.APIKey)
 	if err := qc.Ping(ctx); err != nil {
 		log.Fatalf("qdrant unreachable: %v", err)
 	}

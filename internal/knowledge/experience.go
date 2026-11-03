@@ -9,6 +9,7 @@ import (
 
 	"github.com/flipslidersand/reasoning-mesh/internal/eval"
 	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
+	"github.com/flipslidersand/reasoning-mesh/internal/tasktype"
 )
 
 // FailureRecord is the input to the Experience Store.
@@ -40,6 +41,9 @@ func NewExperienceStore(emb *Embedder, qc *qdrant.Client, collection string) *Ex
 // Record embeds the failure and upserts it to the experience collection.
 // Idempotent: same content + task_type + failure_type → same ID.
 func (s *ExperienceStore) Record(ctx context.Context, rec FailureRecord) error {
+	if !tasktype.Valid(rec.TaskType) {
+		return fmt.Errorf("experience: invalid task_type %q", rec.TaskType)
+	}
 	vectors, err := s.embedder.Embed(ctx, []string{rec.Content})
 	if err != nil {
 		return fmt.Errorf("experience embed: %w", err)
@@ -52,7 +56,7 @@ func (s *ExperienceStore) Record(ctx context.Context, rec FailureRecord) error {
 	now := time.Now().UTC()
 	payload := map[string]any{
 		"content":               rec.Content,
-		"task_type":             string(toQdrantTaskType(rec.TaskType)),
+		"task_type":             string(rec.TaskType),
 		"outcome_status":        string(qdrant.OutcomeFailure),
 		"failure_type":          string(rec.FailureType),
 		"evaluator":             rec.Evaluator,

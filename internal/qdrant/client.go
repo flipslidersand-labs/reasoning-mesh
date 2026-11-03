@@ -34,6 +34,32 @@ func NewWithTimeout(endpoint string, timeout time.Duration) *Client {
 	}
 }
 
+// apiKeyTransport adds Qdrant's api-key header to every request.
+type apiKeyTransport struct {
+	key  string
+	next http.RoundTripper
+}
+
+func (t apiKeyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context()) // RoundTripper must not mutate the caller's request
+	req.Header.Set("api-key", t.key)
+	return t.next.RoundTrip(req)
+}
+
+// WithAPIKey makes the client send key as the "api-key" header on every
+// request (Qdrant authentication). An empty key leaves the client unauthenticated.
+func (c *Client) WithAPIKey(key string) *Client {
+	if key == "" {
+		return c
+	}
+	next := c.http.Transport
+	if next == nil {
+		next = http.DefaultTransport
+	}
+	c.http.Transport = apiKeyTransport{key: key, next: next}
+	return c
+}
+
 func (c *Client) Ping(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint+"/healthz", nil)
 	if err != nil {

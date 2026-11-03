@@ -24,4 +24,4 @@ expected:
   required_keywords:
     - nil
     - Config
-    - 初期化
+    - 初期化,initialize

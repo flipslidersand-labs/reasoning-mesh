@@ -12,6 +12,19 @@
 
 目標: no-rag accuracy ≥ 0.70
 
+## 短期改善後スコア（2026-09-12、#192）
+
+judge: qwen2.5:7b（`-models qwen2.5:7b,ornith:9b` で実行、models[0]が判定モデル）
+
+| condition | accuracy | keyword_recall |
+|-----------|----------|---------------|
+| no-rag    | 0.81     | 0.49          |
+
+system prompt改善（コード前に日本語説明必須・技術用語は英語のまま）＋
+eval keywords のOR同義語拡張（`testable,テスト可能`等）により、目標の
+0.70を上回った。同じ変更はqwen2.5:7bの生成にも適用されるため、qwen側の
+no-rag accuracyも0.80と高水準（system promptの効果はモデル非依存）。
+
 ## 失敗パターン分類
 
 accuracy < 0.6 のケース: 7件（arch-go-003 / debug-go-001 / debug-rust-001 / impl-go-002 / impl-go-003 / impl-go-006 / impl-go-007）
@@ -88,7 +101,7 @@ fine-tune 対象領域（不足している分野）:
 ## 進捗
 
 - [x] 失敗パターン3類型の特定（2026-08-29）
-- [ ] eval keywords 拡張（Type A 対応）
-- [ ] Rust lifetime fine-tune データ追加（Type B 対応）
-- [ ] system prompt 改善（Type C 対応）
-- [ ] 改善後 eval で no-rag accuracy ≥ 0.70 確認
+- [x] eval keywords 拡張（Type A 対応、2026-09-12 #192）
+- [ ] Rust lifetime fine-tune データ追加（Type B 対応、中期・YUKI RTX4070作業待ち）
+- [x] system prompt 改善（Type C 対応、2026-09-12 #192）
+- [x] 改善後 eval で no-rag accuracy ≥ 0.70 確認（0.81、2026-09-12 #192）

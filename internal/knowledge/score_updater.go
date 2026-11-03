@@ -27,6 +27,7 @@ type FeedbackEvent struct {
 type ScoreUpdater struct {
 	qdrant     *qdrant.Client
 	collection string
+	scorer     ScorerConfig
 	ch         chan FeedbackEvent
 	done       chan struct{}
 	stopOnce   sync.Once
@@ -39,9 +40,17 @@ func NewScoreUpdater(qc *qdrant.Client, collection string, bufSize int) *ScoreUp
 	return &ScoreUpdater{
 		qdrant:     qc,
 		collection: collection,
+		scorer:     DefaultScorerConfig(),
 		ch:         make(chan FeedbackEvent, bufSize),
 		done:       make(chan struct{}),
 	}
+}
+
+// WithScorerConfig sets the Beta prior used for the stored success_rate so it
+// matches the retriever's ScorerConfig. Call before Start().
+func (u *ScoreUpdater) WithScorerConfig(cfg ScorerConfig) *ScoreUpdater {
+	u.scorer = cfg
+	return u
 }
 
 // Start launches the background goroutine. Call Stop() to shut down cleanly.
@@ -144,7 +153,7 @@ func (u *ScoreUpdater) apply(ctx context.Context, ev FeedbackEvent) {
 		if ev.Outcome {
 			successCount += count
 		}
-		effective := (float64(successCount) + 2.0) / (float64(usageCount) + 4.0) // α=2, β=2
+		effective := u.scorer.EffectiveSuccess(usageCount, successCount)
 
 		wg.Add(1)
 		sem <- struct{}{}

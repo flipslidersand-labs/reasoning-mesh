@@ -28,7 +28,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v1.64.8  # 固定(.golangci.yml は v1 形式。latest は v2 になり壊れる。CONTRIBUTING.md 参照)
           install-mode: goinstall
 
       - name: Run tests with coverage
