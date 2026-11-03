@@ -1,10 +1,13 @@
 package knowledge_test
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	"github.com/flipslidersand/reasoning-mesh/internal/eval"
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
 )
 
 // deterministicID is already tested via ExportedDeterministicID.
@@ -34,5 +37,31 @@ func TestIngestEntry_DefaultTaskType(t *testing.T) {
 
 	if idImpl == idDebug {
 		t.Error("different task types should produce different IDs (dedup must be task-scoped)")
+	}
+}
+
+// #212: an unknown task_type used to be silently rewritten to "implementation"
+// by toQdrantTaskType; it must now be rejected before anything is embedded/stored.
+func TestIngest_UnknownTaskType_Rejected(t *testing.T) {
+	s := knowledge.NewIngestStore(nil, nil, "col") // nil embedder: validation must fire first
+	_, err := s.Ingest(context.Background(), knowledge.IngestEntry{Content: "x", TaskType: "bogus"})
+	if err == nil || !strings.Contains(err.Error(), "task_type") {
+		t.Fatalf("err = %v, want task_type validation error", err)
+	}
+}
+
+// eval.TaskType and qdrant.TaskType are one type; no conversion function exists.
+func TestTaskType_SharedBetweenEvalAndQdrant(t *testing.T) {
+	var q qdrant.TaskType = eval.TaskDebugging
+	if string(q) != "debugging" {
+		t.Fatalf("got %q", q)
+	}
+}
+
+func TestExperienceRecord_UnknownTaskType_Rejected(t *testing.T) {
+	s := knowledge.NewExperienceStore(nil, nil, "col")
+	err := s.Record(context.Background(), knowledge.FailureRecord{Content: "x", TaskType: "bogus"})
+	if err == nil || !strings.Contains(err.Error(), "task_type") {
+		t.Fatalf("err = %v, want task_type validation error", err)
 	}
 }

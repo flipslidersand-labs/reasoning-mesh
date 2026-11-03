@@ -424,3 +424,83 @@ func containsString(s, sub string) bool {
 			return false
 		}()
 }
+
+// recordingServer returns canned responses in order and records the "model"
+// field of every request, so tests can see which model answered vs. judged.
+func recordingServer(t *testing.T, responses []string) (*httptest.Server, func() []string) {
+	t.Helper()
+	var mu sync.Mutex
+	var seen []string
+	idx := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		mu.Lock()
+		seen = append(seen, req.Model)
+		resp := responses[idx]
+		if idx < len(responses)-1 {
+			idx++
+		}
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"response": resp, "done": true})
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), seen...)
+	}
+}
+
+// #213: the judge is an explicit field, not "whatever happens to be models[0]".
+func TestRunner_WithJudgeModel_JudgesWithConfiguredModel(t *testing.T) {
+	srv, models := recordingServer(t, []string{"nil pointer fix", "0.9"})
+	client := ollama.New(srv.URL, 10)
+
+	runner := NewRunnerWithRetrieverMap(client, RetrieverMap{}, []string{"target-a", "target-b"}, []Condition{CondNoRAG}).
+		WithCooldown(0).
+		WithJudgeModel("judge-x")
+	runner.Run(context.Background(), []Case{makeCase("c1", []string{"nil pointer"})})
+
+	got := models()
+	// per target model: one generate call (the target) then one judge call
+	if len(got) < 2 || got[0] != "target-a" || got[1] != "judge-x" {
+		t.Fatalf("model call order = %v, want [target-a judge-x ...]", got)
+	}
+	for i := 1; i < len(got); i += 2 {
+		if got[i] != "judge-x" {
+			t.Errorf("call %d used %q, want judge-x", i, got[i])
+		}
+	}
+}
+
+// Without WithJudgeModel the judge is still models[0] (baseline methodology),
+// but it is now an explicit, documented default.
+func TestRunner_DefaultJudgeModel_IsFirstModel(t *testing.T) {
+	srv, models := recordingServer(t, []string{"nil pointer fix", "0.9"})
+	client := ollama.New(srv.URL, 10)
+
+	runner := NewRunnerWithRetrieverMap(client, RetrieverMap{}, []string{"first", "second"}, []Condition{CondNoRAG}).
+		WithCooldown(0)
+	runner.Run(context.Background(), []Case{makeCase("c1", []string{"nil pointer"})})
+
+	if got := models(); len(got) < 2 || got[1] != "first" {
+		t.Fatalf("judge call model = %v, want second call to use \"first\"", got)
+	}
+}
+
+func TestRunner_SelfJudging(t *testing.T) {
+	c := ollama.New("http://unused", 1)
+	if !NewRunnerWithRetrieverMap(c, RetrieverMap{}, []string{"only"}, nil).SelfJudging() {
+		t.Error("single model judging itself should report SelfJudging")
+	}
+	if NewRunnerWithRetrieverMap(c, RetrieverMap{}, []string{"only"}, nil).WithJudgeModel("other").SelfJudging() {
+		t.Error("explicit different judge must not report SelfJudging")
+	}
+	if NewRunnerWithRetrieverMap(c, RetrieverMap{}, []string{"a", "b"}, nil).SelfJudging() {
+		t.Error("judge a with targets a,b still has an independent target; only the sole-model case is the accident")
+	}
+}

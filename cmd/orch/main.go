@@ -67,7 +67,7 @@ func run(cfg *config.Config) error {
 	if cfg.Qdrant.TimeoutSeconds > 0 {
 		qdrantTimeout = time.Duration(cfg.Qdrant.TimeoutSeconds) * time.Second
 	}
-	qdrantClient := qdrant.NewWithTimeout(cfg.Qdrant.Endpoint, qdrantTimeout)
+	qdrantClient := qdrant.NewWithTimeout(cfg.Qdrant.Endpoint, qdrantTimeout).WithAPIKey(cfg.Qdrant.APIKey)
 	if err := qdrantClient.Ping(ctx); err != nil {
 		return fmt.Errorf("qdrant unreachable: %w", err)
 	}
@@ -84,19 +84,14 @@ func run(cfg *config.Config) error {
 	embedder := knowledge.NewEmbedderWithAuth(cfg.Embedder.Endpoint, cfg.Embedder.APIKey, cfg.Embedder.Collection)
 
 	// --- Scorer ---
-	scorer := knowledge.ScorerConfig{
-		Alpha:           cfg.Scorer.Alpha,
-		Beta:            cfg.Scorer.Beta,
-		FreshnessLambda: cfg.Scorer.FreshnessLambda,
-		TaskBoost:       cfg.Scorer.TaskBoost,
-	}
+	scorer := cfg.Scorer
 
 	// --- Knowledge Retriever (Score condition for production) ---
 	knowledgeCol := cfg.Qdrant.Collections["knowledge"]
 	retriever := knowledge.NewQdrantRetriever(qdrantClient, embedder, knowledgeCol, scorer, "score")
 
 	// --- Score Updater ---
-	updater := knowledge.NewScoreUpdater(qdrantClient, knowledgeCol, 256)
+	updater := knowledge.NewScoreUpdater(qdrantClient, knowledgeCol, 256).WithScorerConfig(scorer)
 	updater.Start()
 	defer updater.Stop()
 
