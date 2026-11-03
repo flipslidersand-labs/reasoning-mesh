@@ -139,7 +139,7 @@ func buildRetrieverMap(ctx context.Context, cfg *config.Config) eval.RetrieverMa
 		eval.CondCompressed: noop,
 	}
 
-	qc := qdrant.New(cfg.Qdrant.Endpoint)
+	qc := qdrant.New(cfg.Qdrant.Endpoint).WithAPIKey(cfg.Qdrant.APIKey)
 	if err := qc.Ping(ctx); err != nil {
 		log.Printf("WARN: Qdrant unreachable (%v) — RAG conditions will use NoopRetriever", err)
 		return rm
@@ -220,7 +220,7 @@ func runIngestLocal(cfg *config.Config, args []string) {
 
 	ctx := context.Background()
 
-	qc := qdrant.New(cfg.Qdrant.Endpoint)
+	qc := qdrant.New(cfg.Qdrant.Endpoint).WithAPIKey(cfg.Qdrant.APIKey)
 	if err := qc.Ping(ctx); err != nil {
 		log.Fatalf("qdrant unreachable: %v", err)
 	}

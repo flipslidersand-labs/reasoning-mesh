@@ -67,7 +67,7 @@ func run(cfg *config.Config) error {
 	if cfg.Qdrant.TimeoutSeconds > 0 {
 		qdrantTimeout = time.Duration(cfg.Qdrant.TimeoutSeconds) * time.Second
 	}
-	qdrantClient := qdrant.NewWithTimeout(cfg.Qdrant.Endpoint, qdrantTimeout)
+	qdrantClient := qdrant.NewWithTimeout(cfg.Qdrant.Endpoint, qdrantTimeout).WithAPIKey(cfg.Qdrant.APIKey)
 	if err := qdrantClient.Ping(ctx); err != nil {
 		return fmt.Errorf("qdrant unreachable: %w", err)
 	}

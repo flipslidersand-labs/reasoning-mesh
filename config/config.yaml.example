@@ -7,6 +7,8 @@ ollama:
 
 qdrant:
   endpoint: "http://YOUR_HOST:6333"
+  # api_key: api-key header for an authenticated Qdrant. Leave empty if Qdrant has no auth.
+  # api_key: "${QDRANT_API_KEY}"   # 未設定の ${VAR} は展開されずそのまま送られるため、使うときだけ有効化
   collections:
     knowledge: "rm_knowledge"
     experience: "rm_experience"
