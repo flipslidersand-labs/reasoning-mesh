@@ -15,5 +15,5 @@ jobs:
       pull-requests: write
     with:
       go-version: "1.26"
-      coverage-threshold: 0
+      coverage-threshold: 50
       test-flags: "-race -count=1 -timeout 120s"
