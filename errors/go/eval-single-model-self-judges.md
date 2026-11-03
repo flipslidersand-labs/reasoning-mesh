@@ -44,3 +44,8 @@ go run ./cmd/llmo eval -models ornith:9b -judge-model qwen2.5:7b -conditions no-
 
 `-judge-model` を省略すると従来どおり `-models` の先頭が judge になる(ベースラインと同じ方法論)。
 単一モデルがそのまま judge になる構成では、実行時に自己採点の警告が出る。
+
+## 予防
+
+- ベースラインと比較する eval では、judge を `-judge-model` で明示する（単一モデル評価でも自己採点にならない）。
+- 実行時に自己採点の警告が出たら、スコアをベースラインと比較しない。

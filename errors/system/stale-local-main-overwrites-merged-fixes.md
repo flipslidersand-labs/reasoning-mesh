@@ -30,3 +30,8 @@ squash-mergeされていた `validate.CommitSHA` 検証と
   実際の最新内容を確認してから編集する。
 - 疑わしい場合はテストを通してから気づくのではなく、diffで「消えている行」が
   ないか rebase 直後に確認する。
+
+## 予防
+
+- 編集の土台はローカル `main` ではなく、`git fetch origin main` 後の `origin/main` から作った worktree にする。
+- rebase / merge 直後に diff で「消えている行」がないか確認し、既存ファイルを編集する前に `git show origin/main:<path>` で最新内容と照合する。

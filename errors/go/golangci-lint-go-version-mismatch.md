@@ -42,3 +42,8 @@ Goツールチェイン（`go.mod`のバージョン）を使ってソースか�
 lintを初めて有効化する場合、これまで検証されていなかった既存のlint違反
 （unused type、gosimple指摘等）が一気に表面化することがある。CI導入と同じPRで
 まとめて直すか、`only-new-issues: true` で既存分を一時的に免除するか判断する。
+
+## 予防
+
+- Go の `go.mod` バージョンを上げる（新しい Go を採用する）PR では、golangci-lint のプリビルドバイナリがそのバージョンに対応しているかを確認し、対応前は `install-mode: goinstall` を使う。
+- lint を新規に有効化する PR では、既存違反を同じ PR で直すか `only-new-issues: true` で免除するかを先に決める。
