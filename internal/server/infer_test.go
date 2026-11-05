@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/flipslidersand/reasoning-mesh/internal/eval"
@@ -180,5 +184,53 @@ func TestInfer_InvalidTaskType(t *testing.T) {
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for invalid task_type, got %d", rec.Code)
+	}
+}
+
+// errRetriever always fails, simulating a Qdrant/embedder outage.
+type errRetriever struct{}
+
+func (errRetriever) Retrieve(_ context.Context, _ string, _ eval.TaskType, _ int) ([]eval.KnowledgeItem, error) {
+	return nil, errors.New("qdrant down")
+}
+
+func TestInfer_RAGError_LoggedAndDegraded(t *testing.T) {
+	var logBuf bytes.Buffer
+	log.SetOutput(&logBuf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	srv := buildInferServer(t, errRetriever{}, "")
+	body, _ := json.Marshal(server.InferRequest{Prompt: "fix race condition", TaskType: "debugging"})
+	req := httptest.NewRequest(http.MethodPost, "/v1/infer", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 (inference continues without RAG), got %d", rec.Code)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["degraded"] != true {
+		t.Errorf("want degraded=true, body = %s", rec.Body.String())
+	}
+	if m["answer"] == "" {
+		t.Error("expected answer to still be returned")
+	}
+	if !strings.Contains(logBuf.String(), "qdrant down") {
+		t.Errorf("RAG error not logged: %q", logBuf.String())
+	}
+}
+
+func TestInfer_OK_NotDegraded(t *testing.T) {
+	srv := buildInferServer(t, &stubRetriever{}, "")
+	body, _ := json.Marshal(server.InferRequest{Prompt: "x", TaskType: "debugging"})
+	req := httptest.NewRequest(http.MethodPost, "/v1/infer", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if strings.Contains(rec.Body.String(), "degraded") {
+		t.Errorf("degraded must be omitted on success: %s", rec.Body.String())
 	}
 }
