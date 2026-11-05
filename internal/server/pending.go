@@ -71,10 +71,26 @@ func (s *PendingStore) sweepLoop() {
 // If the store has reached maxCap, the oldest entry is evicted first.
 func (s *PendingStore) Put(knowledgeIDs []string) string {
 	id := newRequestID()
-	now := time.Now()
 	s.mu.Lock()
-	// Evict the oldest entry when at cap to bound memory usage.
-	if len(s.entries) >= s.maxCap {
+	s.insertLocked(id, knowledgeIDs)
+	s.mu.Unlock()
+	return id
+}
+
+// Restore puts knowledge IDs back under an existing request ID (with a fresh
+// TTL). Callers use it when a Get-consumed request could not be processed
+// (e.g. the score updater buffer was full) so the client can retry.
+func (s *PendingStore) Restore(requestID string, knowledgeIDs []string) {
+	s.mu.Lock()
+	s.insertLocked(requestID, knowledgeIDs)
+	s.mu.Unlock()
+}
+
+// insertLocked stores an entry, evicting the oldest one when at cap.
+// s.mu must be held.
+func (s *PendingStore) insertLocked(id string, knowledgeIDs []string) {
+	now := time.Now()
+	if _, exists := s.entries[id]; !exists && len(s.entries) >= s.maxCap {
 		oldest := ""
 		var oldestTime time.Time
 		for k, e := range s.entries {
@@ -92,8 +108,6 @@ func (s *PendingStore) Put(knowledgeIDs []string) string {
 		expiresAt:    now.Add(pendingTTL),
 		insertedAt:   now,
 	}
-	s.mu.Unlock()
-	return id
 }
 
 // Get returns the knowledge IDs for the given request ID and removes the entry.

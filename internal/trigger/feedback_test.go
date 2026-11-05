@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
@@ -166,6 +167,8 @@ type stubPending struct{ ids []string }
 
 func (s *stubPending) Get(_ string) []string { return s.ids }
 
+func (s *stubPending) Restore(_ string, _ []string) {}
+
 func TestFeedbackHandler_RequestIDResolution(t *testing.T) {
 	u := newTestUpdater()
 	u.Start()
@@ -191,5 +194,57 @@ func TestFeedbackHandler_RequestIDNotFound(t *testing.T) {
 	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 when request_id not found, got %d", rec.Code)
+	}
+}
+
+// consumingPending mimics server.PendingStore: Get consumes the entry,
+// Restore puts it back under the same request ID.
+type consumingPending struct{ m map[string][]string }
+
+func (c *consumingPending) Get(id string) []string {
+	ids := c.m[id]
+	delete(c.m, id)
+	return ids
+}
+
+func (c *consumingPending) Restore(id string, ids []string) { c.m[id] = ids }
+
+// Regression for #257: a 503 (buffer full) must not burn the request_id, so a
+// retry with the same request_id succeeds once the buffer has room; after a
+// success the request_id is consumed (no double submission).
+func TestFeedbackHandler_RequestIDRetryAfter503(t *testing.T) {
+	u := knowledge.NewScoreUpdater((*qdrant.Client)(nil), "test", 1) // not started: buffer stays full
+	defer u.Stop()
+	pending := &consumingPending{m: map[string][]string{"req-1": {"id-from-store"}}}
+	h := trigger.NewFeedbackHandler(u, pending)
+
+	do := func(b trigger.FeedbackRequest) int {
+		body, _ := json.Marshal(b)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
+		return rec.Code
+	}
+
+	// Fill the single buffer slot with a direct-ID feedback.
+	if code := do(trigger.FeedbackRequest{KnowledgeIDs: []string{validUUID1}}); code != http.StatusAccepted {
+		t.Fatalf("fill: want 202, got %d", code)
+	}
+	if code := do(trigger.FeedbackRequest{RequestID: "req-1"}); code != http.StatusServiceUnavailable {
+		t.Fatalf("full buffer: want 503, got %d", code)
+	}
+
+	u.Start() // drain the buffer (asynchronously)
+	code := 0
+	for i := 0; i < 100; i++ {
+		if code = do(trigger.FeedbackRequest{RequestID: "req-1"}); code != http.StatusServiceUnavailable {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if code != http.StatusAccepted {
+		t.Fatalf("retry after 503: want 202, got %d", code)
+	}
+	if code := do(trigger.FeedbackRequest{RequestID: "req-1"}); code != http.StatusBadRequest {
+		t.Fatalf("after success: want 400 (consumed), got %d", code)
 	}
 }
