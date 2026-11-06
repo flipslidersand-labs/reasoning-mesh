@@ -106,7 +106,8 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// When the client provides knowledge_ids directly, validate them as UUID v4.
+	// When the client provides knowledge_ids directly, validate them as UUIDs (hyphen/case-insensitive) and normalize
+	// to the hyphenated lowercase form Qdrant returns.
 	// IDs resolved from the pending store were already validated at ingest time.
 	if len(req.KnowledgeIDs) > 0 {
 		if err := validate.KnowledgeIDs(req.KnowledgeIDs); err != nil {
@@ -114,6 +115,11 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		norm := make([]string, len(req.KnowledgeIDs))
+		for i, id := range req.KnowledgeIDs {
+			norm[i] = validate.NormalizeKnowledgeID(id)
+		}
+		req.KnowledgeIDs = norm
 	}
 
 	ids := req.KnowledgeIDs
