@@ -60,3 +60,37 @@ func TestScoreUpdater_DoubleStart(t *testing.T) {
 	u.Start() // second call must be a no-op
 	u.Stop()
 }
+
+// TestScoreUpdater_SendAfterStop verifies Send after Stop returns false
+// instead of panicking on a closed channel (#256).
+func TestScoreUpdater_SendAfterStop(t *testing.T) {
+	for _, started := range []bool{true, false} {
+		u := knowledge.NewScoreUpdater(nil, "rm_knowledge", 4)
+		if started {
+			u.Start()
+		}
+		u.Stop()
+		if u.Send(knowledge.FeedbackEvent{KnowledgeIDs: []string{"x"}, Outcome: true}) {
+			t.Fatalf("started=%v: Send after Stop must return false", started)
+		}
+	}
+}
+
+// TestScoreUpdater_ConcurrentSendStop runs Send and Stop concurrently; under
+// -race this must neither panic nor race.
+func TestScoreUpdater_ConcurrentSendStop(t *testing.T) {
+	u := knowledge.NewScoreUpdater(nil, "rm_knowledge", 4)
+	u.Start()
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 200; j++ {
+				u.Send(knowledge.FeedbackEvent{KnowledgeIDs: []string{"x"}})
+			}
+		}()
+	}
+	u.Stop()
+	wg.Wait()
+}
