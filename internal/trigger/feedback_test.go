@@ -20,6 +20,8 @@ const validUUID1 = "550e8400-e29b-41d4-a716-446655440000"
 const validUUID2 = "6ba7b810-9dad-41d1-80b4-00c04fd430c8"
 const validUUID3 = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
 
+func boolPtr(b bool) *bool { return &b }
+
 func newTestUpdater() *knowledge.ScoreUpdater {
 	return knowledge.NewScoreUpdater((*qdrant.Client)(nil), "test", 8)
 }
@@ -44,7 +46,7 @@ func TestFeedbackHandler_OK(t *testing.T) {
 	h := trigger.NewFeedbackHandler(u, nil)
 	body, _ := json.Marshal(trigger.FeedbackRequest{
 		KnowledgeIDs: []string{validUUID1},
-		Outcome:      true,
+		Outcome:      boolPtr(true),
 		Evaluator:    "ci",
 	})
 	req := feedbackRequest(body, "test-token")
@@ -64,7 +66,7 @@ func TestFeedbackHandler_OK(t *testing.T) {
 func TestFeedbackHandler_Unauthorized_MissingToken(t *testing.T) {
 	u := newTestUpdater()
 	h := trigger.NewFeedbackHandler(u, nil)
-	body, _ := json.Marshal(trigger.FeedbackRequest{KnowledgeIDs: []string{validUUID1}, Outcome: true})
+	body, _ := json.Marshal(trigger.FeedbackRequest{KnowledgeIDs: []string{validUUID1}, Outcome: boolPtr(true)})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, feedbackRequest(body, ""))
 	if rec.Code != http.StatusUnauthorized {
@@ -75,7 +77,7 @@ func TestFeedbackHandler_Unauthorized_MissingToken(t *testing.T) {
 func TestFeedbackHandler_Unauthorized_WrongToken(t *testing.T) {
 	u := newTestUpdater()
 	h := trigger.NewFeedbackHandler(u, nil)
-	body, _ := json.Marshal(trigger.FeedbackRequest{KnowledgeIDs: []string{validUUID1}, Outcome: true})
+	body, _ := json.Marshal(trigger.FeedbackRequest{KnowledgeIDs: []string{validUUID1}, Outcome: boolPtr(true)})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, feedbackRequest(body, "wrong-token"))
 	if rec.Code != http.StatusUnauthorized {
@@ -86,7 +88,7 @@ func TestFeedbackHandler_Unauthorized_WrongToken(t *testing.T) {
 func TestFeedbackHandler_MissingIDs(t *testing.T) {
 	u := newTestUpdater()
 	h := trigger.NewFeedbackHandler(u, nil)
-	body, _ := json.Marshal(trigger.FeedbackRequest{KnowledgeIDs: nil, Outcome: true})
+	body, _ := json.Marshal(trigger.FeedbackRequest{KnowledgeIDs: nil, Outcome: boolPtr(true)})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
 	if rec.Code != http.StatusBadRequest {
@@ -99,7 +101,7 @@ func TestFeedbackHandler_InvalidKnowledgeID(t *testing.T) {
 	h := trigger.NewFeedbackHandler(u, nil)
 	body, _ := json.Marshal(trigger.FeedbackRequest{
 		KnowledgeIDs: []string{"id-001"}, // not a UUID
-		Outcome:      true,
+		Outcome:      boolPtr(true),
 	})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
@@ -114,7 +116,7 @@ func TestFeedbackHandler_Evaluator(t *testing.T) {
 
 	body, _ := json.Marshal(trigger.FeedbackRequest{
 		KnowledgeIDs: []string{validUUID1},
-		Outcome:      false,
+		Outcome:      boolPtr(false),
 		Evaluator:    "eval",
 	})
 	rec := httptest.NewRecorder()
@@ -152,7 +154,7 @@ func TestFeedbackHandler_ResponseCountMatchesIDs(t *testing.T) {
 	h := trigger.NewFeedbackHandler(u, nil)
 	body, _ := json.Marshal(trigger.FeedbackRequest{
 		KnowledgeIDs: []string{validUUID1, validUUID2, validUUID3},
-		Outcome:      true,
+		Outcome:      boolPtr(true),
 	})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
@@ -180,7 +182,7 @@ func TestFeedbackHandler_RequestIDResolution(t *testing.T) {
 	// the UUID validation (only directly provided knowledge_ids are validated).
 	pending := &stubPending{ids: []string{"id-from-store"}}
 	h := trigger.NewFeedbackHandler(u, pending)
-	body, _ := json.Marshal(trigger.FeedbackRequest{RequestID: "req-001", Outcome: true})
+	body, _ := json.Marshal(trigger.FeedbackRequest{RequestID: "req-001", Outcome: boolPtr(true)})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
 	if rec.Code != http.StatusAccepted {
@@ -191,7 +193,7 @@ func TestFeedbackHandler_RequestIDResolution(t *testing.T) {
 func TestFeedbackHandler_RequestIDNotFound(t *testing.T) {
 	u := newTestUpdater()
 	h := trigger.NewFeedbackHandler(u, &stubPending{ids: nil})
-	body, _ := json.Marshal(trigger.FeedbackRequest{RequestID: "unknown"})
+	body, _ := json.Marshal(trigger.FeedbackRequest{RequestID: "unknown", Outcome: boolPtr(true)})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
 	if rec.Code != http.StatusBadRequest {
@@ -228,17 +230,17 @@ func TestFeedbackHandler_RequestIDRetryAfter503(t *testing.T) {
 	}
 
 	// Fill the single buffer slot with a direct-ID feedback.
-	if code := do(trigger.FeedbackRequest{KnowledgeIDs: []string{validUUID1}}); code != http.StatusAccepted {
+	if code := do(trigger.FeedbackRequest{KnowledgeIDs: []string{validUUID1}, Outcome: boolPtr(true)}); code != http.StatusAccepted {
 		t.Fatalf("fill: want 202, got %d", code)
 	}
-	if code := do(trigger.FeedbackRequest{RequestID: "req-1"}); code != http.StatusServiceUnavailable {
+	if code := do(trigger.FeedbackRequest{RequestID: "req-1", Outcome: boolPtr(true)}); code != http.StatusServiceUnavailable {
 		t.Fatalf("full buffer: want 503, got %d", code)
 	}
 
 	u.Start() // drain the buffer (asynchronously)
 	code := 0
 	for i := 0; i < 100; i++ {
-		if code = do(trigger.FeedbackRequest{RequestID: "req-1"}); code != http.StatusServiceUnavailable {
+		if code = do(trigger.FeedbackRequest{RequestID: "req-1", Outcome: boolPtr(true)}); code != http.StatusServiceUnavailable {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -246,7 +248,7 @@ func TestFeedbackHandler_RequestIDRetryAfter503(t *testing.T) {
 	if code != http.StatusAccepted {
 		t.Fatalf("retry after 503: want 202, got %d", code)
 	}
-	if code := do(trigger.FeedbackRequest{RequestID: "req-1"}); code != http.StatusBadRequest {
+	if code := do(trigger.FeedbackRequest{RequestID: "req-1", Outcome: boolPtr(true)}); code != http.StatusBadRequest {
 		t.Fatalf("after success: want 400 (consumed), got %d", code)
 	}
 }
@@ -272,7 +274,7 @@ func TestFeedbackHandler_DeterministicIDRoundTrip(t *testing.T) {
 	u := knowledge.NewScoreUpdater(qdrant.New(qs.URL), "test", 8)
 	u.Start()
 	h := trigger.NewFeedbackHandler(u, nil)
-	body, _ := json.Marshal(trigger.FeedbackRequest{KnowledgeIDs: []string{raw}, Outcome: true})
+	body, _ := json.Marshal(trigger.FeedbackRequest{KnowledgeIDs: []string{raw}, Outcome: boolPtr(true)})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
 	if rec.Code != http.StatusAccepted {
@@ -294,5 +296,42 @@ func TestFeedbackHandler_DeterministicIDRoundTrip(t *testing.T) {
 	defer mu.Unlock()
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("qdrant got ids %v, want [%s]", got, want)
+	}
+}
+
+// Regression for #266: a missing/null/typo'd outcome must be rejected with 400
+// (not recorded as a failure) and must not consume the pending request_id, so
+// the client can resend a corrected body.
+func TestFeedbackHandler_InvalidOutcomeRejectedWithoutConsumingPending(t *testing.T) {
+	cases := map[string]string{
+		"omitted":       `{"request_id":"req-1"}`,
+		"null":          `{"request_id":"req-1","outcome":null}`,
+		"typo_field":    `{"request_id":"req-1","outcom":true}`,
+		"unknown_extra": `{"request_id":"req-1","outcome":true,"bogus":1}`,
+		"wrong_type":    `{"request_id":"req-1","outcome":"true"}`,
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			u := newTestUpdater()
+			u.Start()
+			defer u.Stop()
+			pending := &consumingPending{m: map[string][]string{"req-1": {"id-from-store"}}}
+			h := trigger.NewFeedbackHandler(u, pending)
+
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, feedbackRequest([]byte(raw), "test-token"))
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("want 400, got %d", rec.Code)
+			}
+			if len(pending.m["req-1"]) != 1 {
+				t.Fatalf("pending was consumed by a rejected request")
+			}
+
+			rec = httptest.NewRecorder()
+			h.ServeHTTP(rec, feedbackRequest([]byte(`{"request_id":"req-1","outcome":false}`), "test-token"))
+			if rec.Code != http.StatusAccepted {
+				t.Fatalf("resend with valid body: want 202, got %d", rec.Code)
+			}
+		})
 	}
 }
