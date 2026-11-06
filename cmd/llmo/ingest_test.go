@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+
+	"github.com/flipslidersand/reasoning-mesh/internal/validate"
 )
 
 func TestRunIngest_File(t *testing.T) {
@@ -36,8 +38,8 @@ func TestRunIngest_File(t *testing.T) {
 		}
 	})
 
-	if captured.CommitSHA != "file:"+f.Name() {
-		t.Errorf("commit_sha = %q", captured.CommitSHA)
+	if err := validate.CommitSHA(captured.CommitSHA); err != nil {
+		t.Errorf("commit_sha = %q rejected by server validation: %v", captured.CommitSHA, err)
 	}
 	if captured.Diff == "" {
 		t.Error("diff should contain file content")
@@ -106,7 +108,11 @@ func TestBuildIngestPayload_FileContent(t *testing.T) {
 	if payload.Diff != "hello world" {
 		t.Errorf("diff = %q", payload.Diff)
 	}
-	if payload.CommitSHA != "file:"+f.Name() {
-		t.Errorf("commit_sha = %q", payload.CommitSHA)
+	if err := validate.CommitSHA(payload.CommitSHA); err != nil {
+		t.Errorf("commit_sha = %q rejected by server validation: %v", payload.CommitSHA, err)
+	}
+	// sha256("hello world") first 40 hex chars: deterministic from content.
+	if want := "b94d27b9934d3e08a52e52d7da7dabfac484efe3"; payload.CommitSHA != want {
+		t.Errorf("commit_sha = %q, want %q", payload.CommitSHA, want)
 	}
 }
