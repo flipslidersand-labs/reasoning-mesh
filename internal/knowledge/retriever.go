@@ -92,8 +92,13 @@ func (r *QdrantRetriever) computeScore(hit qdrant.SearchResult, taskType eval.Ta
 	// Beta-distribution reranking for CondScore
 	usageCount := payloadInt(hit.Payload, "usage_count")
 	successCount := payloadInt(hit.Payload, "success_count")
-	lastUsedAt := payloadTime(hit.Payload, "last_used_at")
-	days := time.Since(lastUsedAt).Hours() / 24
+	// last_used_at 欠損/不正時は created_at、それも無ければ days=0(スコア 0 化を防ぐ)
+	days := 0.0
+	if ts, ok := payloadTime(hit.Payload, "last_used_at"); ok {
+		days = time.Since(ts).Hours() / 24
+	} else if ts, ok := payloadTime(hit.Payload, "created_at"); ok {
+		days = time.Since(ts).Hours() / 24
+	}
 	hitTaskType := payloadStr(hit.Payload, "task_type")
 	taskMatch := hitTaskType == string(taskType)
 
@@ -115,8 +120,9 @@ func payloadStr(p map[string]any, key string) string {
 	return v
 }
 
-func payloadTime(p map[string]any, key string) time.Time {
+// payloadTime は RFC3339 の時刻を返す。欠損・パース不能なら ok=false。
+func payloadTime(p map[string]any, key string) (time.Time, bool) {
 	s, _ := p[key].(string)
-	t, _ := time.Parse(time.RFC3339, s)
-	return t
+	t, err := time.Parse(time.RFC3339, s)
+	return t, err == nil
 }
