@@ -106,6 +106,18 @@ func (c *Config) Validate() error {
 			errs = append(errs, fmt.Sprintf("embedder.collection: %v", err))
 		}
 	}
+	if c.Scorer.Alpha <= 0 {
+		errs = append(errs, "scorer.alpha must be > 0")
+	}
+	if c.Scorer.Beta <= 0 {
+		errs = append(errs, "scorer.beta must be > 0")
+	}
+	if c.Scorer.FreshnessLambda < 0 {
+		errs = append(errs, "scorer.freshness_lambda must be >= 0")
+	}
+	if c.Scorer.TaskBoost <= 0 {
+		errs = append(errs, "scorer.task_boost must be > 0")
+	}
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid config: %s", strings.Join(errs, "; "))
 	}
@@ -133,7 +145,8 @@ func Load(path string) (*Config, error) {
 	// Expand ${ENV_VAR} placeholders before unmarshalling.
 	expanded := expandEnv(string(data))
 
-	var cfg Config
+	// Defaults first so an omitted or partial scorer: keeps the rest (#274).
+	cfg := Config{Scorer: knowledge.DefaultScorerConfig()}
 	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
 		return nil, fmt.Errorf("config %s: parse: %w", path, err)
 	}

@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -97,7 +99,10 @@ func buildIngestPayload(commitRef, filePath string) (ingestRequest, error) {
 		if err != nil {
 			return ingestRequest{}, fmt.Errorf("read file %s: %w", filePath, err)
 		}
-		sha := "file:" + filePath
+		// Server requires commit_sha to be 7-64 lowercase hex; derive a
+		// deterministic one from the content.
+		sum := sha256.Sum256(content)
+		sha := hex.EncodeToString(sum[:])[:40]
 		return ingestRequest{CommitSHA: sha, Diff: string(content)}, nil
 	}
 
