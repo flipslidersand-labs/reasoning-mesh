@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 )
 
 func validConfig() *Config {
@@ -16,6 +18,7 @@ func validConfig() *Config {
 		Qdrant:   QdrantConfig{Endpoint: "http://localhost:6333"},
 		Embedder: EmbedderConfig{Endpoint: "http://localhost:9092"},
 		Server:   ServerConfig{Port: 8765},
+		Scorer:   knowledge.DefaultScorerConfig(),
 	}
 }
 
@@ -205,5 +208,60 @@ func TestLoad_QdrantAPIKeyFromEnv(t *testing.T) {
 	}
 	if cfg.Qdrant.APIKey != "k-from-env" {
 		t.Fatalf("APIKey = %q, want k-from-env", cfg.Qdrant.APIKey)
+	}
+}
+
+func loadScorerYAML(t *testing.T, y string) *Config {
+	t.Helper()
+	path := t.TempDir() + "/config.yaml"
+	if err := os.WriteFile(path, []byte(y), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	return cfg
+}
+
+// #274: omitting scorer: must yield defaults, not an all-zero config (NaN scores).
+func TestLoad_ScorerOmittedUsesDefaults(t *testing.T) {
+	cfg := loadScorerYAML(t, "server:\n  port: 1\n")
+	if cfg.Scorer != knowledge.DefaultScorerConfig() {
+		t.Fatalf("scorer = %+v, want defaults", cfg.Scorer)
+	}
+}
+
+func TestLoad_ScorerPartialKeepsOtherDefaults(t *testing.T) {
+	cfg := loadScorerYAML(t, "scorer:\n  alpha: 5\n")
+	want := knowledge.DefaultScorerConfig()
+	want.Alpha = 5
+	if cfg.Scorer != want {
+		t.Fatalf("scorer = %+v, want %+v", cfg.Scorer, want)
+	}
+}
+
+func TestValidate_ScorerInvalid(t *testing.T) {
+	cases := map[string]func(*Config){
+		"scorer.alpha":            func(c *Config) { c.Scorer.Alpha = 0 },
+		"scorer.beta":             func(c *Config) { c.Scorer.Beta = -1 },
+		"scorer.freshness_lambda": func(c *Config) { c.Scorer.FreshnessLambda = -0.1 },
+		"scorer.task_boost":       func(c *Config) { c.Scorer.TaskBoost = 0 },
+	}
+	for want, mut := range cases {
+		cfg := validConfig()
+		mut(cfg)
+		err := cfg.Validate()
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v", want, err)
+		}
+	}
+}
+
+func TestValidate_ScorerZeroLambdaOK(t *testing.T) {
+	cfg := validConfig()
+	cfg.Scorer.FreshnessLambda = 0
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("lambda=0 should be valid: %v", err)
 	}
 }
