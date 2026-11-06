@@ -30,7 +30,8 @@ type ScoreUpdater struct {
 	scorer     ScorerConfig
 	ch         chan FeedbackEvent
 	done       chan struct{}
-	stopOnce   sync.Once
+	mu         sync.RWMutex // guards closed and close(ch) against concurrent Send
+	closed     bool
 	started    atomic.Bool
 	dropped    atomic.Int64
 }
@@ -64,7 +65,12 @@ func (u *ScoreUpdater) Start() {
 // Stop signals the background goroutine to drain remaining events and exit.
 // It is safe to call Stop() multiple times or without a prior Start().
 func (u *ScoreUpdater) Stop() {
-	u.stopOnce.Do(func() { close(u.ch) })
+	u.mu.Lock()
+	if !u.closed {
+		u.closed = true
+		close(u.ch)
+	}
+	u.mu.Unlock()
 	if u.started.Load() {
 		<-u.done
 	}
@@ -72,8 +78,14 @@ func (u *ScoreUpdater) Stop() {
 
 // Send enqueues a FeedbackEvent for async processing. Non-blocking if buffer is full.
 // It returns true if the event was enqueued, or false if it was dropped because the
-// buffer is full — callers must not treat a false return as success.
+// buffer is full or the updater has been stopped — callers must not treat a false
+// return as success. Send after Stop is safe and never panics.
 func (u *ScoreUpdater) Send(ev FeedbackEvent) bool {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+	if u.closed {
+		return false
+	}
 	select {
 	case u.ch <- ev:
 		return true
