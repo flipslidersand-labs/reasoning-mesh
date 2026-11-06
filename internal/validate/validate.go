@@ -4,6 +4,7 @@ package validate
 import (
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // validTaskTypes is the allowlist for task_type values.
@@ -34,17 +35,29 @@ func CommitSHA(sha string) error {
 	return nil
 }
 
-// uuidPattern matches UUID v4 (case-insensitive).
+// uuidPattern matches any 128-bit ID as a hyphenated UUID or 32 hex digits
+// (case-insensitive). Version/variant bits are not checked: knowledge IDs are
+// sha256-derived (see knowledge.deterministicID) and carry none.
 var uuidPattern = regexp.MustCompile(
-	`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
+	`(?i)^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32})$`,
 )
 
-// KnowledgeID validates that id is a UUID v4.
+// KnowledgeID validates that id is a UUID (hyphenated) or 32 hex digits.
 func KnowledgeID(id string) error {
 	if !uuidPattern.MatchString(id) {
-		return fmt.Errorf("invalid knowledge_id %q: must be a UUID v4", id)
+		return fmt.Errorf("invalid knowledge_id %q: must be a UUID or 32 hex digits", id)
 	}
 	return nil
+}
+
+// NormalizeKnowledgeID returns id in the lowercase hyphenated form Qdrant uses
+// as point ID. Input that fails KnowledgeID is returned unchanged.
+func NormalizeKnowledgeID(id string) string {
+	if KnowledgeID(id) != nil {
+		return id
+	}
+	h := strings.ToLower(strings.ReplaceAll(id, "-", ""))
+	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
 }
 
 // MaxKnowledgeIDs is the maximum number of knowledge_ids accepted in a single request.

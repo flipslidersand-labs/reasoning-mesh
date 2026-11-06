@@ -50,6 +50,9 @@ func TestKnowledgeID(t *testing.T) {
 	valid := []string{
 		"550e8400-e29b-41d4-a716-446655440000",
 		"6ba7b810-9dad-41d1-80b4-00c04fd430c8",
+		"550e8400-e29b-31d4-a716-446655440000", // non-v4 UUID (sha256-derived IDs carry no version bits)
+		"550E8400E29B41D4A716446655440000",     // hyphen-less, upper case
+		"0123456789abcdef0123456789abcdef",     // deterministicID form
 	}
 	for _, v := range valid {
 		if err := validate.KnowledgeID(v); err != nil {
@@ -60,7 +63,9 @@ func TestKnowledgeID(t *testing.T) {
 		"",
 		"id-001",
 		"not-a-uuid",
-		"550e8400-e29b-31d4-a716-446655440000", // version 3, not 4
+		"550e8400e29b-41d4-a716-446655440000", // partial hyphens
+		"0123456789abcdef0123456789abcdeg",    // non-hex
+		"0123456789abcdef0123456789abcde",     // 31 chars
 	}
 	for _, v := range invalid {
 		if err := validate.KnowledgeID(v); err == nil {
@@ -104,5 +109,17 @@ func TestCollectionName(t *testing.T) {
 		if err := validate.CollectionName(v); err == nil {
 			t.Errorf("CollectionName(%q) want error, got nil", v)
 		}
+	}
+}
+
+func TestNormalizeKnowledgeID(t *testing.T) {
+	const canon = "01234567-89ab-cdef-0123-456789abcdef"
+	for _, in := range []string{canon, "0123456789abcdef0123456789abcdef", "0123456789ABCDEF0123456789ABCDEF", "01234567-89AB-CDEF-0123-456789ABCDEF"} {
+		if got := validate.NormalizeKnowledgeID(in); got != canon {
+			t.Errorf("NormalizeKnowledgeID(%q) = %q, want %q", in, got, canon)
+		}
+	}
+	if got := validate.NormalizeKnowledgeID("bad"); got != "bad" {
+		t.Errorf("invalid input must be returned unchanged, got %q", got)
 	}
 }
