@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -326,15 +327,17 @@ func (r *Runner) judgeAccuracy(ctx context.Context, c Case, answer string) float
 	if err != nil {
 		return -1
 	}
-	raw = strings.TrimSpace(raw)
-	var score float64
-	if _, err := fmt.Sscanf(raw, "%f", &score); err != nil {
+	return parseJudgeScore(raw)
+}
+
+// parseJudgeScore strictly parses the judge output as a number in [0,1].
+// Anything else (0-10 / 0-100 scales, "7/10", trailing prose, NaN) returns -1
+// ("not scored") instead of being clamped, which would inflate accuracy.
+func parseJudgeScore(raw string) float64 {
+	score, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || !(score >= 0 && score <= 1) {
+		log.Printf("eval: judge output %q is not a score in [0,1]; treating as unscored", raw)
 		return -1
-	}
-	if score < 0 {
-		score = 0
-	} else if score > 1 {
-		score = 1
 	}
 	return score
 }
