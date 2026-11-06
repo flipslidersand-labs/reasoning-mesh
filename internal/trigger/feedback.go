@@ -40,7 +40,7 @@ type PendingLookup interface {
 type FeedbackRequest struct {
 	RequestID    string   `json:"request_id,omitempty"`
 	KnowledgeIDs []string `json:"knowledge_ids,omitempty"`
-	Outcome      bool     `json:"outcome"`             // true = success
+	Outcome      *bool    `json:"outcome"`             // required; true = success (pointer so omission/null is detectable)
 	Evaluator    string   `json:"evaluator,omitempty"` // e.g. "ci", "eval", "human"
 }
 
@@ -95,7 +95,9 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxFeedbackBodyBytes)
 
 	var req FeedbackRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
@@ -103,6 +105,13 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Reject before touching the pending store so a bad body does not burn request_id.
+	if req.Outcome == nil {
+		span.SetStatus(codes.Error, "outcome required")
+		http.Error(w, "bad request: outcome required", http.StatusBadRequest)
 		return
 	}
 
@@ -133,7 +142,7 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	outcome := "failure"
-	if req.Outcome {
+	if *req.Outcome {
 		outcome = "success"
 	}
 	span.SetAttributes(
@@ -145,7 +154,7 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	enqueued := h.updater.Send(knowledge.FeedbackEvent{
 		KnowledgeIDs: ids,
-		Outcome:      req.Outcome,
+		Outcome:      *req.Outcome,
 		Evaluator:    req.Evaluator,
 	})
 	_ = ctx // span is derived from ctx; suppress unused warning
