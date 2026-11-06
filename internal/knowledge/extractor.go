@@ -140,6 +140,12 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 			continue
 		}
 
+		if err := preserveExistingStats(ctx, e.qdrant, e.collection, pts); err != nil {
+			log.Printf("extractor: %v (batch %d-%d); skipping to avoid resetting stats", err, batchStart, batchEnd-1)
+			span.SetStatus(codes.Error, err.Error())
+			skipped += len(pts)
+			continue
+		}
 		if err := e.qdrant.BulkUpsert(ctx, e.collection, pts); err != nil {
 			log.Printf("extractor: bulk upsert error (batch %d-%d): %v", batchStart, batchEnd-1, err)
 			span.SetStatus(codes.Error, err.Error())

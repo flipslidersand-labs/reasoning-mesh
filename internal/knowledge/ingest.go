@@ -39,7 +39,8 @@ func NewIngestStore(emb *Embedder, qc *qdrant.Client, collection string) *Ingest
 // Ingest embeds a single entry and upserts it to Qdrant.
 // The deterministic ID is the same formula used by the Extractor
 // (sha256 of task_type + "|" + content_hash), so a manual entry
-// that duplicates an auto-ingested one safely overwrites it.
+// that duplicates an auto-ingested one updates its content/tags while
+// keeping the accumulated feedback statistics (#250).
 func (s *IngestStore) Ingest(ctx context.Context, entry IngestEntry) (string, error) {
 	if entry.Content == "" {
 		return "", fmt.Errorf("content must not be empty")
@@ -73,6 +74,10 @@ func (s *IngestStore) Ingest(ctx context.Context, entry IngestEntry) (string, er
 		"tags":          entry.Tags,
 		"created_at":    now.Format(time.RFC3339),
 		"last_used_at":  now.Format(time.RFC3339),
+	}
+	if err := preserveExistingStats(ctx, s.qdrant, s.collection,
+		[]qdrant.UpsertPoint{{ID: id, Payload: payload}}); err != nil {
+		return "", err
 	}
 
 	if err := s.qdrant.Upsert(ctx, s.collection, id, vectors[0], payload); err != nil {
