@@ -40,6 +40,8 @@ type InferResponse struct {
 	TotalTokens  int      `json:"total_tokens"`
 	KnowledgeIDs []string `json:"knowledge_ids"` // explicit IDs; request_id covers the same
 	Error        string   `json:"error,omitempty"`
+	// Degraded is true when RAG retrieval failed and inference ran without knowledge.
+	Degraded bool `json:"degraded,omitempty"`
 }
 
 type inferHandler struct {
@@ -109,10 +111,17 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// RAG: retrieve relevant knowledge items
 	var knowledgeIDs []string
 	augmentedPrompt := req.Prompt
+	degraded := false
 	if h.retriever != nil {
 		ragCtx, ragSpan := telemetry.Tracer("server/infer").Start(ctx, "rag_retrieve")
 		items, err := h.retriever.Retrieve(ragCtx, req.Prompt, taskType, topK)
 		ragSpan.SetAttributes(attribute.Int("retrieved_count", len(items)))
+		if err != nil {
+			degraded = true
+			ragSpan.RecordError(err)
+			ragSpan.SetStatus(codes.Error, err.Error())
+			log.Printf("infer: rag retrieve failed, continuing without knowledge: %v", err)
+		}
 		ragSpan.End()
 		if err == nil && len(items) > 0 {
 			var sb strings.Builder
@@ -164,6 +173,7 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		PromptTokens: resp.PromptTokens,
 		TotalTokens:  resp.TotalTokens,
 		KnowledgeIDs: knowledgeIDs,
+		Degraded:     degraded,
 	}); err != nil {
 		log.Printf("infer: encode response: %v", err)
 	}
