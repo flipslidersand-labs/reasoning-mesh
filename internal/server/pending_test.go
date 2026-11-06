@@ -93,3 +93,19 @@ func TestPendingStore_CapEvictsOldest(t *testing.T) {
 		}
 	}
 }
+
+func TestPendingStore_RestoreAfterGet(t *testing.T) {
+	s := server.NewPendingStore()
+	defer s.Stop()
+	reqID := s.Put([]string{"x"})
+
+	ids := s.Get(reqID)
+	s.Restore(reqID, ids)
+
+	if got := s.Get(reqID); len(got) != 1 || got[0] != "x" {
+		t.Errorf("Get after Restore = %v, want [x]", got)
+	}
+	if s.Get(reqID) != nil {
+		t.Error("entry should be consumed again after the second Get")
+	}
+}

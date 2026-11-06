@@ -24,7 +24,11 @@ const maxFeedbackBodyBytes = 1 << 20 // 1 MiB
 // PendingLookup is the subset of server.PendingStore needed by the feedback handler.
 // Defined as an interface to avoid an import cycle (trigger → server).
 type PendingLookup interface {
+	// Get returns the IDs and consumes the entry (atomic, so concurrent
+	// duplicates cannot both succeed).
 	Get(requestID string) []string
+	// Restore puts a consumed entry back so the client can retry after a 503.
+	Restore(requestID string, knowledgeIDs []string)
 }
 
 // FeedbackRequest is the JSON body for POST /v1/feedback.
@@ -147,6 +151,10 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = ctx // span is derived from ctx; suppress unused warning
 
 	if !enqueued {
+		// Do not burn the request_id: the client is told to retry.
+		if req.RequestID != "" && len(req.KnowledgeIDs) == 0 && h.pending != nil {
+			h.pending.Restore(req.RequestID, ids)
+		}
 		span.SetStatus(codes.Error, "score updater buffer full, feedback dropped")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
