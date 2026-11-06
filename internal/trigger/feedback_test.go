@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/flipslidersand/reasoning-mesh/internal/eval"
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
 	"github.com/flipslidersand/reasoning-mesh/internal/trigger"
@@ -95,7 +98,7 @@ func TestFeedbackHandler_InvalidKnowledgeID(t *testing.T) {
 	u := newTestUpdater()
 	h := trigger.NewFeedbackHandler(u, nil)
 	body, _ := json.Marshal(trigger.FeedbackRequest{
-		KnowledgeIDs: []string{"id-001"}, // not a UUID v4
+		KnowledgeIDs: []string{"id-001"}, // not a UUID
 		Outcome:      true,
 	})
 	rec := httptest.NewRecorder()
@@ -191,5 +194,51 @@ func TestFeedbackHandler_RequestIDNotFound(t *testing.T) {
 	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 when request_id not found, got %d", rec.Code)
+	}
+}
+
+// A sha256-derived (hyphen-less, non-v4) ID must be accepted and reach Qdrant
+// in the hyphenated lowercase form Qdrant uses as point ID.
+func TestFeedbackHandler_DeterministicIDRoundTrip(t *testing.T) {
+	raw := knowledge.ExportedDeterministicID(eval.TaskType("debugging"), "content")
+	var mu sync.Mutex
+	var got []string
+	qs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b struct {
+			IDs []string `json:"ids"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		mu.Lock()
+		got = append(got, b.IDs...)
+		mu.Unlock()
+		_, _ = w.Write([]byte(`{"result":[]}`))
+	}))
+	defer qs.Close()
+
+	u := knowledge.NewScoreUpdater(qdrant.New(qs.URL), "test", 8)
+	u.Start()
+	h := trigger.NewFeedbackHandler(u, nil)
+	body, _ := json.Marshal(trigger.FeedbackRequest{KnowledgeIDs: []string{raw}, Outcome: true})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("want 202 for sha256-derived id, got %d", rec.Code)
+	}
+	want := raw[0:8] + "-" + raw[8:12] + "-" + raw[12:16] + "-" + raw[16:20] + "-" + raw[20:]
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := len(got)
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	u.Stop()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("qdrant got ids %v, want [%s]", got, want)
 	}
 }
