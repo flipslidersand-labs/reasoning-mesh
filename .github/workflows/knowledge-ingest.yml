@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,59 +21,22 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Vet
-        run: go vet ./...
-
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.64.8  # 固定(.golangci.yml は v1 形式。latest は v2 になり壊れる。CONTRIBUTING.md 参照)
           install-mode: goinstall
 
-      - name: Run tests with coverage
-        id: tests
+      # テスト・vet・カバレッジ閾値・PR コメントは ci.yml(go-test)が担う。
+      # ここは ingest ジョブへ渡す CI ログ用に push のときだけ走らせる(#225)。
+      - name: Run tests (CI log for ingest)
+        if: ${{ github.event_name == 'push' }}
         run: |
-          go test -race ./... -coverprofile=cover.out -count=1 2>&1 | tee /tmp/test.log
+          go test -race ./... -count=1 2>&1 | tee /tmp/test.log
           exit "${PIPESTATUS[0]}"
 
-      - name: Check coverage threshold
-        id: coverage
-        run: |
-          TOTAL=$(go tool cover -func=cover.out | awk '/^total:/{gsub(/%/,"",$3); print int($3)}')
-          echo "Total coverage: ${TOTAL}%"
-          echo "pct=${TOTAL}" >> "$GITHUB_OUTPUT"
-          if [ "${TOTAL}" -lt 50 ]; then
-            echo "::error::Coverage ${TOTAL}% is below minimum threshold of 50%"
-            exit 1
-          fi
-
-      - name: PR coverage comment
-        if: ${{ always() && github.event_name == 'pull_request' }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const MARKER = '<!-- coverage-comment -->';
-            const pct = '${{ steps.coverage.outputs.pct }}';
-            const threshold = 50;
-            let body;
-            if (pct === '') {
-              body = MARKER + '\n### 📊 Go coverage\ncoverage 計測に失敗しました（Check coverage threshold ステップ未到達）';
-            } else {
-              const status = Number(pct) >= threshold ? '✅' : '❌';
-              body = MARKER + '\n### 📊 Go coverage: **' + pct + '%** ' + status + '\n\n閾値: ' + threshold + '%';
-            }
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
-            });
-            const existing = comments.find(c => c.body && c.body.includes(MARKER));
-            if (existing) {
-              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
-            }
-
       - name: Upload test log
-        if: always()
+        if: ${{ always() && github.event_name == 'push' }}
         uses: actions/upload-artifact@v4
         with:
           name: test-log
