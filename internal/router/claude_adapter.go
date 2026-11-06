@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -20,6 +23,7 @@ const (
 type ClaudeAdapter struct {
 	apiKey string
 	model  string
+	url    string
 	http   *http.Client
 }
 
@@ -32,6 +36,7 @@ func NewClaudeAdapter(apiKey, model string) *ClaudeAdapter {
 	return &ClaudeAdapter{
 		apiKey: apiKey,
 		model:  model,
+		url:    claudeAPIURL,
 		http:   &http.Client{Timeout: 120 * time.Second},
 	}
 }
@@ -53,9 +58,10 @@ type claudeRequest struct {
 }
 
 type claudeResponse struct {
-	ID    string `json:"id"`
-	Model string `json:"model"`
-	Usage struct {
+	ID         string `json:"id"`
+	Model      string `json:"model"`
+	StopReason string `json:"stop_reason"`
+	Usage      struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
 	} `json:"usage"`
@@ -78,7 +84,7 @@ func (a *ClaudeAdapter) Generate(ctx context.Context, prompt string) (Response, 
 		return Response{}, fmt.Errorf("claude marshal: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, claudeAPIURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.url, bytes.NewReader(body))
 	if err != nil {
 		return Response{}, fmt.Errorf("claude request: %w", err)
 	}
@@ -93,7 +99,9 @@ func (a *ClaudeAdapter) Generate(ctx context.Context, prompt string) (Response, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return Response{}, fmt.Errorf("claude api: status %d", resp.StatusCode)
+		// Error bodies from the API carry no credentials; cap the read at 512 bytes.
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return Response{}, fmt.Errorf("claude api: status %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
 
 	var cr claudeResponse
@@ -106,6 +114,13 @@ func (a *ClaudeAdapter) Generate(ctx context.Context, prompt string) (Response, 
 		if block.Type == "text" {
 			text += block.Text
 		}
+	}
+
+	if text == "" {
+		return Response{}, fmt.Errorf("claude api: empty text response (stop_reason=%q)", cr.StopReason)
+	}
+	if cr.StopReason == "max_tokens" {
+		log.Printf("claude: response truncated at max_tokens=%d (model=%s)", claudeMaxTokens, cr.Model)
 	}
 
 	return Response{
