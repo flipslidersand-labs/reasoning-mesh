@@ -6,6 +6,7 @@ package bench
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -35,7 +36,15 @@ type Delta struct {
 }
 
 // Load reads all *.json files in dir and returns them sorted by run_at ascending.
+// Files that cannot be used are skipped with a warning on stderr.
 func Load(dir string) ([]RunEntry, error) {
+	return LoadTo(dir, os.Stderr)
+}
+
+// LoadTo is Load with the warning destination injected. Unreadable files,
+// invalid JSON, and files that are not a RunSummary (zero run_at or no
+// summaries) are skipped and reported to warn, one line each.
+func LoadTo(dir string, warn io.Writer) ([]RunEntry, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("bench load: %w", err)
@@ -49,10 +58,16 @@ func Load(dir string) ([]RunEntry, error) {
 		path := filepath.Join(dir, e.Name())
 		data, err := os.ReadFile(path)
 		if err != nil {
+			fmt.Fprintf(warn, "bench: skip %s: %v\n", e.Name(), err)
 			continue
 		}
 		var rs eval.RunSummary
 		if err := json.Unmarshal(data, &rs); err != nil {
+			fmt.Fprintf(warn, "bench: skip %s: invalid JSON: %v\n", e.Name(), err)
+			continue
+		}
+		if rs.RunAt.IsZero() || len(rs.Summaries) == 0 {
+			fmt.Fprintf(warn, "bench: skip %s: not a RunSummary (run_at zero or no summaries)\n", e.Name())
 			continue
 		}
 		runs = append(runs, RunEntry{RunAt: rs.RunAt, Summaries: rs.Summaries, File: e.Name()})
