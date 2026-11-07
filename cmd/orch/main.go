@@ -42,8 +42,10 @@ func main() {
 // minWriteTimeout is the floor for http.Server.WriteTimeout.
 const minWriteTimeout = 180 * time.Second
 
-// writeTimeoutMargin is added on top of the Ollama timeout so the handler can
-// finish writing its response after the slowest permitted inference.
+// writeTimeoutMargin is added on top of the Ollama timeout as headroom for the
+// non-Ollama work in a request (e.g. embedding and Qdrant search in /v1/infer)
+// and for writing the response. It is a fixed allowance, not a bound on those
+// steps.
 const writeTimeoutMargin = 30 * time.Second
 
 // writeTimeout derives http.Server.WriteTimeout from ollama.timeout_seconds so

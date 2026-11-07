@@ -18,7 +18,9 @@ func (f fakePinger) Ping(context.Context) error { return f.err }
 func getHealth(t *testing.T, o, q server.Pinger) int {
 	t.Helper()
 	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
-	h := buildHandler(server.Config{}, o, q)
+	pending := server.NewPendingStore()
+	t.Cleanup(pending.Stop)
+	h := buildHandler(server.Config{Pending: pending}, o, q)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/health", nil))
 	return rec.Code
@@ -44,6 +46,9 @@ func TestWriteTimeout_ExceedsOllamaTimeout(t *testing.T) {
 		if got <= time.Duration(sec)*time.Second {
 			t.Errorf("timeout_seconds=%d: WriteTimeout %v must exceed ollama timeout", sec, got)
 		}
+	}
+	if got := writeTimeout(300); got != 330*time.Second {
+		t.Errorf("writeTimeout(300) = %v, want 330s (ollama timeout + 30s margin)", got)
 	}
 	if got := writeTimeout(1); got < 180*time.Second {
 		t.Errorf("WriteTimeout %v must not drop below the 180s floor", got)
