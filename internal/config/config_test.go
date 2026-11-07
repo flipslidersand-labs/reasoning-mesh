@@ -15,8 +15,11 @@ func validConfig() *Config {
 			TimeoutSeconds: 30,
 			Models:         map[string]string{"router": "qwen2.5:7b", "knowledge": "ornith:9b"},
 		},
-		Qdrant:   QdrantConfig{Endpoint: "http://localhost:6333"},
-		Embedder: EmbedderConfig{Endpoint: "http://localhost:9092"},
+		Qdrant: QdrantConfig{
+			Endpoint:    "http://localhost:6333",
+			Collections: map[string]string{"knowledge": "rm_knowledge"},
+		},
+		Embedder: EmbedderConfig{Endpoint: "http://localhost:9092", Dim: 768},
 		Server:   ServerConfig{Port: 8765},
 		Scorer:   knowledge.DefaultScorerConfig(),
 	}
@@ -263,5 +266,25 @@ func TestValidate_ScorerZeroLambdaOK(t *testing.T) {
 	cfg.Scorer.FreshnessLambda = 0
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("lambda=0 should be valid: %v", err)
+	}
+}
+
+func TestValidate_EmbedderDimRequired(t *testing.T) {
+	for _, dim := range []int{0, -1} {
+		cfg := validConfig()
+		cfg.Embedder.Dim = dim
+		err := cfg.Validate()
+		if err == nil || !strings.Contains(err.Error(), "embedder.dim") {
+			t.Errorf("dim=%d: expected embedder.dim error, got %v", dim, err)
+		}
+	}
+}
+
+func TestValidate_KnowledgeCollectionRequired(t *testing.T) {
+	cfg := validConfig()
+	delete(cfg.Qdrant.Collections, "knowledge")
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "qdrant.collections.knowledge") {
+		t.Fatalf("expected qdrant.collections.knowledge error, got %v", err)
 	}
 }

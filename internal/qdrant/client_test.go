@@ -241,7 +241,11 @@ func TestEnsureCollection_AlreadyExists(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"name": "col"}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{
+				"config": map[string]any{"params": map[string]any{
+					"vectors": map[string]any{"size": 384, "distance": "Cosine"},
+				}},
+			}})
 			return
 		}
 		// PUT should not be called
