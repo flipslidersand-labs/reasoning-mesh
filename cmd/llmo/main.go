@@ -92,7 +92,10 @@ func runEval(cfg *config.Config, args []string) {
 	}
 	fmt.Printf("Loaded %d cases from %s\n", len(cases), *casesDir)
 
-	models := resolveModels(cfg, *modelsFlag)
+	models, err := resolveModels(cfg, *modelsFlag)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
 	conditions := resolveConditions(*condFlag)
 
 	ollamaClient := ollama.New(cfg.Ollama.Endpoint, cfg.Ollama.TimeoutSeconds).WithNumPredict(cfg.Ollama.NumPredict)
@@ -177,17 +180,26 @@ func buildRetrieverMap(ctx context.Context, cfg *config.Config, allowNoop bool) 
 	return rm, false, nil
 }
 
-func resolveModels(cfg *config.Config, flag string) []string {
-	if flag != "" {
-		var models []string
-		for _, m := range splitComma(flag) {
-			if m != "" {
-				models = append(models, m)
-			}
-		}
-		return models
+// resolveModels returns the non-empty model names from the flag, or from
+// ollama.models (router, knowledge) when the flag is empty. It returns an
+// error if no model name remains.
+func resolveModels(cfg *config.Config, flag string) ([]string, error) {
+	candidates := splitComma(flag)
+	source := "-models"
+	if flag == "" {
+		candidates = []string{cfg.Ollama.Models["router"], cfg.Ollama.Models["knowledge"]}
+		source = "config ollama.models (router, knowledge)"
 	}
-	return []string{cfg.Ollama.Models["router"], cfg.Ollama.Models["knowledge"]}
+	var models []string
+	for _, m := range candidates {
+		if m = strings.TrimSpace(m); m != "" {
+			models = append(models, m)
+		}
+	}
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no model names resolved from %s; set ollama.models.router/knowledge in config or pass -models", source)
+	}
+	return models, nil
 }
 
 func resolveConditions(flag string) []eval.Condition {
