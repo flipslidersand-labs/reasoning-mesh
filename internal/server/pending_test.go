@@ -149,7 +149,9 @@ func TestPendingStore_SweepMixed(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		valid = append(valid, s.Put([]string{"v"}))
 		id := s.Put([]string{"e"})
-		s.SetExpiry(id, time.Now().Add(-time.Minute))
+		if !s.SetExpiry(id, time.Now().Add(-time.Minute)) {
+			t.Fatal("entry not found")
+		}
 		expired = append(expired, id)
 	}
 	if s.Len() != 6 {
@@ -161,6 +163,8 @@ func TestPendingStore_SweepMixed(t *testing.T) {
 	if s.Len() != 3 {
 		t.Errorf("Len after sweep = %d, want 3", s.Len())
 	}
+	// Note: Get itself returns nil for expired entries, so this loop does not
+	// verify Sweep; the Len == 3 check above is what proves Sweep removed them.
 	for _, id := range expired {
 		if s.Get(id) != nil {
 			t.Errorf("expired %s should be nil after Sweep", id)
@@ -196,7 +200,9 @@ func TestPendingStore_ConcurrentAddGetSweep(t *testing.T) {
 			for i := 0; i < 200; i++ {
 				id := s.Put([]string{"k"})
 				if i%2 == 0 {
-					s.SetExpiry(id, time.Now().Add(-time.Second))
+					if !s.SetExpiry(id, time.Now().Add(-time.Second)) {
+						t.Errorf("entry %s not found", id)
+					}
 				}
 				s.Sweep()
 				if got := s.Get(id); got != nil && i%2 == 0 {
