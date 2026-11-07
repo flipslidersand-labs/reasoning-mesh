@@ -140,3 +140,49 @@ func TestRunAsk_UsesOrchToken(t *testing.T) {
 		t.Errorf("Authorization = %q, want Bearer orch-secret", gotAuth)
 	}
 }
+
+func TestDefaultServerURL_Table(t *testing.T) {
+	mk := func(host string, port int) *config.Config {
+		c := &config.Config{}
+		c.Server.Host = host
+		c.Server.Port = port
+		return c
+	}
+	tests := []struct {
+		name string
+		env  string
+		cfg  *config.Config
+		want string
+	}{
+		{"env beats config", "http://remote:1234", mk("myhost", 9090), "http://remote:1234"},
+		{"env trailing slash trimmed", "http://remote:1234//", nil, "http://remote:1234"},
+		{"config used without env", "", mk("myhost", 9090), "http://myhost:9090"},
+		{"config 0.0.0.0 -> localhost", "", mk("0.0.0.0", 9090), "http://localhost:9090"},
+		{"config empty host -> localhost", "", mk("", 9090), "http://localhost:9090"},
+		{"nothing set", "", nil, "http://localhost:8080"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LLMO_URL", tt.env)
+			if got := defaultServerURL(tt.cfg); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunAsk_ServerFlagTrailingSlash(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = json.NewEncoder(w).Encode(askResponse{Answer: "ok", Model: "stub"})
+	}))
+	defer srv.Close()
+
+	captureOutput(func() {
+		_ = runAsk(nil, []string{"--server", srv.URL + "/", "hello"})
+	})
+	if gotPath != "/v1/route" {
+		t.Errorf("path = %q, want /v1/route", gotPath)
+	}
+}
