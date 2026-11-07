@@ -72,3 +72,82 @@ func TestIsTransient(t *testing.T) {
 		}
 	}
 }
+
+// captureNumPredict returns a server that records options.num_predict from
+// the request and replies with the given response.
+func captureNumPredict(t *testing.T, got *int, resp GenerateResponse) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req GenerateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		if req.Options != nil {
+			*got = req.Options.NumPredict
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+}
+
+func TestGenerateFull_LengthDoneReasonIsExposed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"model":"m","response":"{\"task_type\": \"impl","done":true,"done_reason":"length","eval_count":600}`))
+	}))
+	defer srv.Close()
+
+	got, err := New(srv.URL, 10).GenerateFull(context.Background(), "m", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DoneReason != "length" {
+		t.Errorf("DoneReason = %q, want length", got.DoneReason)
+	}
+	if !got.Truncated() {
+		t.Error("Truncated() = false, want true for done_reason=length")
+	}
+}
+
+func TestGenerateFull_StopIsNotTruncated(t *testing.T) {
+	srv := serve(GenerateResponse{Response: "ok", Done: true, DoneReason: "stop"})
+	defer srv.Close()
+
+	got, err := New(srv.URL, 10).GenerateFull(context.Background(), "m", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Truncated() {
+		t.Error("Truncated() = true, want false for done_reason=stop")
+	}
+}
+
+func TestGenerateFull_NumPredictDefaultAndOverride(t *testing.T) {
+	tests := []struct {
+		name string
+		set  int
+		want int
+	}{
+		{"default", 0, DefaultNumPredict},
+		{"override", 4096, 4096},
+		{"non-positive keeps default", -1, DefaultNumPredict},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got int
+			srv := captureNumPredict(t, &got, GenerateResponse{Response: "ok", Done: true})
+			defer srv.Close()
+
+			c := New(srv.URL, 10)
+			if tt.set != 0 {
+				c = c.WithNumPredict(tt.set)
+			}
+			if _, err := c.GenerateFull(context.Background(), "m", "p"); err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Errorf("num_predict = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}

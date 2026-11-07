@@ -11,16 +11,30 @@ import (
 	"time"
 )
 
+// DefaultNumPredict is the generation token cap sent as options.num_predict
+// when the config does not set ollama.num_predict.
+const DefaultNumPredict = 2048
+
 type Client struct {
-	endpoint string
-	http     *http.Client
+	endpoint   string
+	http       *http.Client
+	numPredict int
 }
 
 func New(endpoint string, timeoutSec int) *Client {
 	return &Client{
-		endpoint: endpoint,
-		http:     &http.Client{Timeout: time.Duration(timeoutSec) * time.Second},
+		endpoint:   endpoint,
+		http:       &http.Client{Timeout: time.Duration(timeoutSec) * time.Second},
+		numPredict: DefaultNumPredict,
 	}
+}
+
+// WithNumPredict overrides the num_predict cap. n <= 0 keeps the default.
+func (c *Client) WithNumPredict(n int) *Client {
+	if n > 0 {
+		c.numPredict = n
+	}
+	return c
 }
 
 type GenerateOptions struct {
@@ -38,9 +52,16 @@ type GenerateResponse struct {
 	Model           string `json:"model"`
 	Response        string `json:"response"`
 	Done            bool   `json:"done"`
+	DoneReason      string `json:"done_reason"`
 	PromptEvalCount int    `json:"prompt_eval_count"`
 	EvalCount       int    `json:"eval_count"`
 	TotalDurationNs int64  `json:"total_duration"`
+}
+
+// Truncated reports whether generation stopped at the num_predict cap
+// (done_reason=length), i.e. Response is likely cut off mid-answer.
+func (r *GenerateResponse) Truncated() bool {
+	return r.DoneReason == "length"
 }
 
 type ChatMessage struct {
@@ -105,7 +126,7 @@ func (c *Client) generateOnce(ctx context.Context, model, prompt string) (*Gener
 		Model:   model,
 		Prompt:  prompt,
 		Stream:  false,
-		Options: &GenerateOptions{NumPredict: 600},
+		Options: &GenerateOptions{NumPredict: c.numPredict},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal %T: %w", GenerateRequest{}, err)
@@ -132,6 +153,9 @@ func (c *Client) generateOnce(ctx context.Context, model, prompt string) (*Gener
 	}
 	if result.Response == "" {
 		return nil, fmt.Errorf("ollama generate: empty response (model may be thermal-throttling)")
+	}
+	if result.Truncated() {
+		log.Printf("ollama: response truncated (done_reason=length, model=%s, eval_count=%d, num_predict=%d)", model, result.EvalCount, c.numPredict)
 	}
 	return &result, nil
 }
