@@ -42,6 +42,8 @@ type InferResponse struct {
 	Error        string   `json:"error,omitempty"`
 	// Degraded is true when RAG retrieval failed and inference ran without knowledge.
 	Degraded bool `json:"degraded,omitempty"`
+	// Truncated is true when the answer hit the model output cap and may be cut off.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 type inferHandler struct {
@@ -174,6 +176,7 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		TotalTokens:  resp.TotalTokens,
 		KnowledgeIDs: knowledgeIDs,
 		Degraded:     degraded,
+		Truncated:    resp.Truncated,
 	}); err != nil {
 		log.Printf("infer: encode response: %v", err)
 	}

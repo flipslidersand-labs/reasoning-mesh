@@ -32,6 +32,7 @@ type Result struct {
 	Accuracy         float64   `json:"accuracy"`       // 0.0-1.0, -1 = not scored
 	Answer           string    `json:"answer"`
 	Error            string    `json:"error,omitempty"`
+	Truncated        bool      `json:"truncated,omitempty"` // generation hit the output cap
 }
 
 // SummaryKey groups results by model+condition for aggregate stats.
@@ -49,6 +50,8 @@ type Summary struct {
 	AvgRecall    float64   `json:"avg_recall"`
 	AvgAccuracy  float64   `json:"avg_accuracy"` // -1 if not scored
 	ErrorCount   int       `json:"error_count"`
+	// TruncatedCount is the number of results cut off at the output cap; rate = TruncatedCount/Count.
+	TruncatedCount int `json:"truncated_count,omitempty"`
 }
 
 type RunSummary struct {
@@ -93,6 +96,7 @@ func ComputeSummaries(results []Result) []Summary {
 		accuracy  float64
 		accCount  int
 		errors    int
+		truncated int
 		count     int
 		succCount int // count excluding errors
 	}
@@ -104,6 +108,9 @@ func ComputeSummaries(results []Result) []Summary {
 		}
 		a := m[k]
 		a.count++
+		if r.Truncated {
+			a.truncated++
+		}
 		if r.Error != "" {
 			a.errors++
 			continue // exclude error results from recall/accuracy aggregation
@@ -129,14 +136,15 @@ func ComputeSummaries(results []Result) []Summary {
 			succF = 1 // avoid div-by-zero; all metrics will be 0 anyway
 		}
 		summaries = append(summaries, Summary{
-			Model:        k.Model,
-			Condition:    k.Condition,
-			Count:        a.count,
-			AvgLatencyMS: float64(a.latency) / succF,
-			TotalTokens:  a.tokens,
-			AvgRecall:    a.recall / succF,
-			AvgAccuracy:  avgAcc,
-			ErrorCount:   a.errors,
+			Model:          k.Model,
+			Condition:      k.Condition,
+			Count:          a.count,
+			AvgLatencyMS:   float64(a.latency) / succF,
+			TotalTokens:    a.tokens,
+			AvgRecall:      a.recall / succF,
+			AvgAccuracy:    avgAcc,
+			ErrorCount:     a.errors,
+			TruncatedCount: a.truncated,
 		})
 	}
 	return summaries
