@@ -1,6 +1,8 @@
 package eval
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,13 +72,22 @@ func TestLoadCases_SkipsSchemaAndNonYAML(t *testing.T) {
 	// Current behaviour: only the ".yaml" suffix is loaded; ".yml" is ignored.
 	// Whether this is intentional needs confirmation (see issue #269).
 	writeFile(t, filepath.Join(dir, "b.yml"), caseYAML("case-b-yml"))
+	// ".yaml" only in the middle of the name: not a suffix match, must be ignored
+	// (invalid content proves it is never parsed).
+	writeFile(t, filepath.Join(dir, "notes.yaml.bak"), "id: [unterminated")
+	// Ends with "schema.yaml" but the base name differs, so it is a normal case.
+	writeFile(t, filepath.Join(dir, "xschema.yaml"), caseYAML("case-x"))
 
 	cases, err := LoadCases(dir)
 	if err != nil {
 		t.Fatalf("LoadCases: %v", err)
 	}
-	if len(cases) != 1 || cases[0].ID != "case-a" {
-		t.Fatalf("cases = %+v, want only case-a", cases)
+	got := map[string]bool{}
+	for _, c := range cases {
+		got[c.ID] = true
+	}
+	if len(cases) != 2 || !got["case-a"] || !got["case-x"] {
+		t.Fatalf("cases = %+v, want only case-a and case-x", cases)
 	}
 }
 
@@ -149,7 +160,7 @@ func TestLoadCases_MissingDir(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing directory")
 	}
-	if !os.IsNotExist(err) {
+	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("error = %v, want a not-exist error", err)
 	}
 	if len(cases) != 0 {
