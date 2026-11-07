@@ -89,7 +89,8 @@ func TestResolveModels(t *testing.T) {
 		{"flag drops whitespace-only and trailing", full, ",a, ,b,", []string{"a", "b"}},
 		{"flag only separators yields nil", full, ",", nil},
 		{"empty flag uses router and knowledge", full, "", []string{"r:1b", "k:9b"}},
-		// Current behavior (not endorsed): missing keys leak empty-string models.
+		// Missing keys leak empty-string models.
+		// 現状の挙動を固定しているだけで望ましい挙動ではない。修正時は期待値を変える(#308)
 		{"empty flag with missing keys yields empty models", noKeys, "", []string{"", ""}},
 	}
 	for _, tc := range cases {
@@ -105,6 +106,7 @@ func TestResolveModels(t *testing.T) {
 func TestResolveModels_NilModelsMap(t *testing.T) {
 	cfg := &config.Config{} // nil map: reads return "" without panic
 	got := resolveModels(cfg, "")
+	// 現状の挙動を固定しているだけで望ましい挙動ではない。修正時は期待値を変える(#308)
 	if want := []string{"", ""}; !reflect.DeepEqual(got, want) {
 		t.Errorf("resolveModels = %#v, want %#v", got, want)
 	}

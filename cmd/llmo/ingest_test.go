@@ -97,6 +97,9 @@ func TestBuildIngestPayload_FileTooLarge(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for oversized file")
 	}
+	if !strings.Contains(err.Error(), "exceeds max allowed size") {
+		t.Errorf("error = %v, want size-limit error", err)
+	}
 }
 
 func TestBuildIngestPayload_FileContent(t *testing.T) {
@@ -169,21 +172,6 @@ func TestBuildIngestPayload_FileAtLimit(t *testing.T) {
 	}
 }
 
-func TestBuildIngestPayload_FileTooLarge_ErrorMessage(t *testing.T) {
-	f, err := os.CreateTemp(t.TempDir(), "big*.log")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	if err := f.Truncate(maxIngestFileBytes + 1); err != nil {
-		t.Fatalf("truncate: %v", err)
-	}
-	_, err = buildIngestPayload("", f.Name())
-	if err == nil || !strings.Contains(err.Error(), "exceeds max allowed size") {
-		t.Errorf("error = %v, want size-limit error", err)
-	}
-}
-
 // isolatedGitEnv returns the environment with git repo-selection variables
 // removed so test git commands can never touch an outer repository.
 func isolatedGitEnv() []string {
@@ -208,10 +196,10 @@ func setupGitRepo(t *testing.T) string {
 	}
 	dir := t.TempDir()
 	for _, kv := range os.Environ() {
-		k, v, _ := strings.Cut(kv, "=")
+		k, _, _ := strings.Cut(kv, "=")
 		if strings.HasPrefix(k, "GIT_") {
+			t.Setenv(k, "") // testing restores the original value on cleanup
 			os.Unsetenv(k)
-			t.Cleanup(func() { os.Setenv(k, v) })
 		}
 	}
 	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
@@ -256,6 +244,12 @@ func TestBuildIngestPayload_GitRevParseFails(t *testing.T) {
 func TestBuildIngestPayload_GitCommit(t *testing.T) {
 	dir := setupGitRepo(t)
 	commitFile(t, dir, "a.go", "package a\n")
+	commitFile(t, dir, "README.md", "# readme\n")
+	// Change a non-.go file in the same commit; it must be excluded from the diff.
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# readme\nmd-only-change\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "README.md")
 	sha := commitFile(t, dir, "a.go", "package a\n\nvar X = 1\n")
 
 	payload, err := buildIngestPayload("HEAD", "")
@@ -267,6 +261,9 @@ func TestBuildIngestPayload_GitCommit(t *testing.T) {
 	}
 	if !strings.Contains(payload.Diff, "+var X = 1") {
 		t.Errorf("diff missing change: %q", payload.Diff)
+	}
+	if strings.Contains(payload.Diff, "README.md") || strings.Contains(payload.Diff, "md-only-change") {
+		t.Errorf("diff must be limited to *.go files: %q", payload.Diff)
 	}
 }
 
