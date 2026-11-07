@@ -64,7 +64,8 @@ func (h *routeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.router.Generate(r.Context(), taskType, req.Task)
 	if err != nil {
-		writeRouteErr(w, "inference failed: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("route: inference failed: %v", err)
+		writeRouteErr(w, "upstream error", http.StatusInternalServerError)
 		return
 	}
 

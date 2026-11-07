@@ -1,8 +1,12 @@
-package trigger
+package bearer_test
 
-import "testing"
+import (
+	"testing"
 
-func TestBearerTokenMatches(t *testing.T) {
+	"github.com/flipslidersand/reasoning-mesh/internal/bearer"
+)
+
+func TestMatches(t *testing.T) {
 	const want = "dummy-token-value"
 	cases := []struct {
 		name string
@@ -21,9 +25,17 @@ func TestBearerTokenMatches(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := bearerTokenMatches(c.auth, want); got != c.want {
-				t.Errorf("bearerTokenMatches(%q) = %v, want %v", c.auth, got, c.want)
+			if got := bearer.Matches(c.auth, want); got != c.want {
+				t.Errorf("Matches(%q) = %v, want %v", c.auth, got, c.want)
 			}
 		})
+	}
+}
+
+func TestMatches_EmptyExpectedToken(t *testing.T) {
+	for _, auth := range []string{"Bearer ", "", "Bearer x"} {
+		if bearer.Matches(auth, "") {
+			t.Errorf("Matches(%q, \"\") = true, want false", auth)
+		}
 	}
 }
