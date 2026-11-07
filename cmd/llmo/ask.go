@@ -40,7 +40,7 @@ func runAsk(cfg *config.Config, args []string) error {
 	if err != nil {
 		return fmt.Errorf("ask: marshal request: %w", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, *serverURL+"/v1/route", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, trimServerURL(*serverURL)+"/v1/route", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("ask: build request: %w", err)
 	}
@@ -72,18 +72,24 @@ func runAsk(cfg *config.Config, args []string) error {
 	return nil
 }
 
-// defaultServerURL returns the server URL from config, falling back to
-// the LLMO_URL environment variable, then http://localhost:8080.
+// defaultServerURL resolves the default server URL. Precedence (the
+// --server flag overrides this default): LLMO_URL, then server.host/port from
+// config (empty or 0.0.0.0 host becomes localhost), then http://localhost:8080.
 func defaultServerURL(cfg *config.Config) string {
+	if v := os.Getenv("LLMO_URL"); v != "" {
+		return trimServerURL(v)
+	}
 	if cfg != nil && cfg.Server.Port != 0 {
 		host := cfg.Server.Host
-		if host == "" {
+		if host == "" || host == "0.0.0.0" {
 			host = "localhost"
 		}
 		return fmt.Sprintf("http://%s:%d", host, cfg.Server.Port)
 	}
-	if v := os.Getenv("LLMO_URL"); v != "" {
-		return strings.TrimRight(v, "/")
-	}
 	return "http://localhost:8080"
+}
+
+// trimServerURL strips trailing slashes so path concatenation is safe.
+func trimServerURL(u string) string {
+	return strings.TrimRight(u, "/")
 }
