@@ -56,7 +56,7 @@ func runIngest(cfg *config.Config, args []string) error {
 	if err != nil {
 		return fmt.Errorf("ingest: marshal payload: %w", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, *serverURL+"/v1/trigger", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, trimServerURL(*serverURL)+"/v1/trigger", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("ingest: build request: %w", err)
 	}

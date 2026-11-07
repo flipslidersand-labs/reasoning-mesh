@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/flipslidersand/reasoning-mesh/internal/validate"
@@ -114,5 +115,26 @@ func TestBuildIngestPayload_FileContent(t *testing.T) {
 	// sha256("hello world") first 40 hex chars: deterministic from content.
 	if want := "b94d27b9934d3e08a52e52d7da7dabfac484efe3"; payload.CommitSHA != want {
 		t.Errorf("commit_sha = %q, want %q", payload.CommitSHA, want)
+	}
+}
+
+func TestRunIngest_ServerFlagTrailingSlash(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	f := filepath.Join(t.TempDir(), "d.md")
+	if err := os.WriteFile(f, []byte("# x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	captureOutput(func() {
+		_ = runIngest(nil, []string{"--server", srv.URL + "/", "--file", f})
+	})
+	if gotPath != "/v1/trigger" {
+		t.Errorf("path = %q, want /v1/trigger", gotPath)
 	}
 }
