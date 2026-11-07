@@ -42,6 +42,9 @@ type OllamaConfig struct {
 	Endpoint       string            `yaml:"endpoint"`
 	TimeoutSeconds int               `yaml:"timeout_seconds"`
 	Models         map[string]string `yaml:"models"`
+	// NumPredict caps generated tokens per /api/generate call.
+	// 0 = client default (ollama.DefaultNumPredict).
+	NumPredict int `yaml:"num_predict"`
 }
 
 type QdrantConfig struct {
