@@ -128,5 +128,6 @@ func (a *ClaudeAdapter) Generate(ctx context.Context, prompt string) (Response, 
 		PromptTokens: cr.Usage.InputTokens,
 		TotalTokens:  cr.Usage.InputTokens + cr.Usage.OutputTokens,
 		Model:        cr.Model,
+		Truncated:    cr.StopReason == "max_tokens",
 	}, nil
 }

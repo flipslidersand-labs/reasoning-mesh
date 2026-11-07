@@ -1,7 +1,9 @@
 package server_test
 
 import (
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/flipslidersand/reasoning-mesh/internal/server"
 )
@@ -108,4 +110,108 @@ func TestPendingStore_RestoreAfterGet(t *testing.T) {
 	if s.Get(reqID) != nil {
 		t.Error("entry should be consumed again after the second Get")
 	}
+}
+
+func TestPendingStore_ExpiredGet(t *testing.T) {
+	tests := []struct {
+		name   string
+		offset time.Duration // expiry relative to now
+		want   bool          // Get returns IDs
+	}{
+		{"far future is valid", time.Hour, true},
+		{"just expired", -time.Nanosecond, false},
+		{"long expired", -time.Hour, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := server.NewPendingStore()
+			defer s.Stop()
+			id := s.Put([]string{"k"})
+			if !s.SetExpiry(id, time.Now().Add(tt.offset)) {
+				t.Fatal("entry not found")
+			}
+			got := s.Get(id)
+			if (got != nil) != tt.want {
+				t.Errorf("Get = %v, want non-nil=%v", got, tt.want)
+			}
+			if s.Len() != 0 {
+				t.Errorf("Len = %d, want 0 (Get removes entry even when expired)", s.Len())
+			}
+		})
+	}
+}
+
+func TestPendingStore_SweepMixed(t *testing.T) {
+	s := server.NewPendingStore()
+	defer s.Stop()
+
+	var valid, expired []string
+	for i := 0; i < 3; i++ {
+		valid = append(valid, s.Put([]string{"v"}))
+		id := s.Put([]string{"e"})
+		if !s.SetExpiry(id, time.Now().Add(-time.Minute)) {
+			t.Fatal("entry not found")
+		}
+		expired = append(expired, id)
+	}
+	if s.Len() != 6 {
+		t.Fatalf("Len before sweep = %d, want 6", s.Len())
+	}
+
+	s.Sweep()
+
+	if s.Len() != 3 {
+		t.Errorf("Len after sweep = %d, want 3", s.Len())
+	}
+	// Note: Get itself returns nil for expired entries, so this loop does not
+	// verify Sweep; the Len == 3 check above is what proves Sweep removed them.
+	for _, id := range expired {
+		if s.Get(id) != nil {
+			t.Errorf("expired %s should be nil after Sweep", id)
+		}
+	}
+	for _, id := range valid {
+		if got := s.Get(id); len(got) != 1 || got[0] != "v" {
+			t.Errorf("valid %s Get = %v, want [v]", id, got)
+		}
+	}
+}
+
+func TestPendingStore_SweepEmptyAndAllValid(t *testing.T) {
+	s := server.NewPendingStore()
+	defer s.Stop()
+	s.Sweep() // empty store must not panic
+	s.Put([]string{"a"})
+	s.Sweep()
+	if s.Len() != 1 {
+		t.Errorf("Len = %d, want 1 (valid entries survive Sweep)", s.Len())
+	}
+}
+
+func TestPendingStore_ConcurrentAddGetSweep(t *testing.T) {
+	s := server.NewPendingStore()
+	defer s.Stop()
+
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 200; i++ {
+				id := s.Put([]string{"k"})
+				if i%2 == 0 {
+					if !s.SetExpiry(id, time.Now().Add(-time.Second)) {
+						t.Errorf("entry %s not found", id)
+					}
+				}
+				s.Sweep()
+				if got := s.Get(id); got != nil && i%2 == 0 {
+					t.Errorf("expired entry returned %v", got)
+				}
+				s.Restore(id, []string{"r"})
+				_ = s.Len()
+			}
+		}()
+	}
+	wg.Wait()
 }
