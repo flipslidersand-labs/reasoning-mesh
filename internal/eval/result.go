@@ -109,14 +109,14 @@ func ComputeSummaries(results []Result) []Summary {
 		}
 		a := m[k]
 		a.count++
-		if r.Truncated {
-			a.truncated++
-		}
 		if r.Error != "" {
 			a.errors++
 			continue // exclude error results from recall/accuracy aggregation
 		}
 		a.succCount++
+		if r.Truncated {
+			a.truncated++
+		}
 		a.latency += r.LatencyMS
 		a.tokens += r.PromptTokens + r.CompletionTokens
 		a.recall += r.KeywordRecall

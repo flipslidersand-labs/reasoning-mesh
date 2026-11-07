@@ -85,3 +85,15 @@ func TestPrintSummary_TruncatedColumn(t *testing.T) {
 		t.Errorf("row lacks truncated count: %q", row)
 	}
 }
+
+func TestComputeSummaries_TruncatedExcludesErrorRows(t *testing.T) {
+	results := []Result{
+		{Model: "m", Condition: CondNoRAG, Truncated: true},
+		{Model: "m", Condition: CondNoRAG, Error: "boom", Truncated: true},
+		{Model: "m", Condition: CondNoRAG},
+	}
+	s := ComputeSummaries(results)
+	if len(s) != 1 || s[0].TruncatedCount != 1 {
+		t.Fatalf("want TruncatedCount=1 (errors excluded), got %+v", s)
+	}
+}
