@@ -254,11 +254,62 @@ func (c *Client) GetByIDs(ctx context.Context, collection string, ids []string) 
 	return result.Result, nil
 }
 
+// collectionDistance is the distance metric EnsureCollection creates and expects.
+const collectionDistance = "Cosine"
+
+// maxCollectionInfoBytes caps the GET /collections/{name} body read.
+const maxCollectionInfoBytes = 1 << 20 // 1 MiB
+
+// checkCollectionVectors verifies that an existing collection's single
+// (unnamed) vector config matches vectorDim and Cosine. Named-vector
+// collections are rejected: this client upserts and searches unnamed vectors.
+func checkCollectionVectors(collection string, body io.Reader, vectorDim int) error {
+	var info struct {
+		Result struct {
+			Config struct {
+				Params struct {
+					Vectors json.RawMessage `json:"vectors"`
+				} `json:"params"`
+			} `json:"config"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(io.LimitReader(body, maxCollectionInfoBytes)).Decode(&info); err != nil {
+		return fmt.Errorf("qdrant collection %s: decode info: %w", collection, err)
+	}
+	raw := info.Result.Config.Params.Vectors
+	if len(raw) == 0 || string(raw) == "null" {
+		return fmt.Errorf("qdrant collection %s: response has no config.params.vectors", collection)
+	}
+	var vec struct {
+		Size     *int   `json:"size"`
+		Distance string `json:"distance"`
+	}
+	if err := json.Unmarshal(raw, &vec); err != nil {
+		return fmt.Errorf("qdrant collection %s: decode vectors config: %w", collection, err)
+	}
+	if vec.Size == nil {
+		return fmt.Errorf("qdrant collection %s uses named vectors, which are not supported (expected a single unnamed vector, size %d, %s)", collection, vectorDim, collectionDistance)
+	}
+	if *vec.Size != vectorDim {
+		return fmt.Errorf("qdrant collection %s has dim %d, config dim %d (embedder.dim)", collection, *vec.Size, vectorDim)
+	}
+	if vec.Distance != collectionDistance {
+		return fmt.Errorf("qdrant collection %s has distance %s, expected %s", collection, vec.Distance, collectionDistance)
+	}
+	return nil
+}
+
 // EnsureCollection checks whether the named collection exists and creates it
-// if not (dim=vectorDim, distance=Cosine). Safe to call on every startup.
+// if not (dim=vectorDim, distance=Cosine). An existing collection must have a
+// matching single-vector config, otherwise an error is returned so a
+// dimension mismatch fails at startup rather than on every upsert/search.
+// Safe to call on every startup.
 func (c *Client) EnsureCollection(ctx context.Context, collection string, vectorDim int) error {
 	if err := validate.CollectionName(collection); err != nil {
 		return err
+	}
+	if vectorDim <= 0 {
+		return fmt.Errorf("qdrant collection %s: vector dim must be > 0, got %d", collection, vectorDim)
 	}
 	url := fmt.Sprintf("%s/collections/%s", c.endpoint, collection)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -269,12 +320,15 @@ func (c *Client) EnsureCollection(ctx context.Context, collection string, vector
 	if err != nil {
 		return err
 	}
-	// Drain and close to allow Keep-Alive connection reuse.
+	if resp.StatusCode == http.StatusOK {
+		err := checkCollectionVectors(collection, resp.Body, vectorDim)
+		// Drain and close to allow Keep-Alive connection reuse.
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return err
+	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode == http.StatusOK {
-		return nil // already exists
-	}
 	if resp.StatusCode != http.StatusNotFound {
 		return fmt.Errorf("qdrant collection check: status %d", resp.StatusCode)
 	}
@@ -283,7 +337,7 @@ func (c *Client) EnsureCollection(ctx context.Context, collection string, vector
 	body, err := json.Marshal(map[string]any{
 		"vectors": map[string]any{
 			"size":     vectorDim,
-			"distance": "Cosine",
+			"distance": collectionDistance,
 		},
 	})
 	if err != nil {

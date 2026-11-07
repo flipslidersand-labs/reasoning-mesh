@@ -118,6 +118,12 @@ func (c *Config) Validate() error {
 	if c.Ollama.Models["knowledge"] == "" {
 		errs = append(errs, "ollama.models.knowledge required")
 	}
+	if c.Embedder.Dim <= 0 {
+		errs = append(errs, "embedder.dim must be > 0")
+	}
+	if c.Qdrant.Collections["knowledge"] == "" {
+		errs = append(errs, "qdrant.collections.knowledge required")
+	}
 	// Validate each collection name to prevent path traversal via config.
 	for key, name := range c.Qdrant.Collections {
 		if err := validate.CollectionName(name); err != nil {
