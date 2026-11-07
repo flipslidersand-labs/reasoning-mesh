@@ -148,7 +148,8 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		genSpan.SetStatus(codes.Error, err.Error())
 		genSpan.End()
 		span.SetStatus(codes.Error, err.Error())
-		writeErr(w, "inference failed: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("infer: inference failed: %v", err)
+		writeErr(w, "upstream error", http.StatusInternalServerError)
 		return
 	}
 	genSpan.SetAttributes(

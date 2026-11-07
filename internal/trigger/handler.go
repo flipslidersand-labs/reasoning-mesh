@@ -2,19 +2,18 @@ package trigger
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/flipslidersand/reasoning-mesh/internal/bearer"
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
 	"github.com/flipslidersand/reasoning-mesh/internal/validate"
@@ -83,8 +82,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Validate Bearer token when configured.
 	if h.token != "" {
 		auth := r.Header.Get("Authorization")
-		if !strings.HasPrefix(auth, "Bearer ") ||
-			subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(auth, "Bearer ")), []byte(h.token)) != 1 {
+		if !bearer.Matches(auth, h.token) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
