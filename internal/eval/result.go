@@ -55,6 +55,9 @@ type RunSummary struct {
 	RunAt     time.Time `json:"run_at"`
 	Results   []Result  `json:"results"`
 	Summaries []Summary `json:"summaries"`
+	// RAGDegraded is true when RAG conditions ran on NoopRetriever because
+	// Qdrant was unreachable (-allow-noop-rag); cosine/score then equal no-rag.
+	RAGDegraded bool `json:"rag_degraded,omitempty"`
 }
 
 // keywordRecall scores each required_keywords entry as a hit if any of its
@@ -183,8 +186,13 @@ func PrintSummary(summaries []Summary) {
 }
 
 func SaveJSON(results []Result, path string) error {
+	return SaveRunJSON(results, path, false)
+}
+
+// SaveRunJSON is SaveJSON that also records whether RAG was degraded to Noop.
+func SaveRunJSON(results []Result, path string, ragDegraded bool) error {
 	summaries := ComputeSummaries(results)
-	summary := RunSummary{RunAt: time.Now(), Results: results, Summaries: summaries}
+	summary := RunSummary{RunAt: time.Now(), Results: results, Summaries: summaries, RAGDegraded: ragDegraded}
 	data, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
 		return err

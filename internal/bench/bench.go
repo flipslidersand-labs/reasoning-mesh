@@ -23,6 +23,8 @@ type RunEntry struct {
 	RunAt     time.Time
 	Summaries []eval.Summary
 	File      string
+	// RAGDegraded: the run's RAG conditions fell back to NoopRetriever.
+	RAGDegraded bool
 }
 
 // Delta is the change between two runs for a specific model×condition.
@@ -70,7 +72,7 @@ func LoadTo(dir string, warn io.Writer) ([]RunEntry, error) {
 			fmt.Fprintf(warn, "bench: skip %s: not a RunSummary (run_at zero or no summaries)\n", e.Name())
 			continue
 		}
-		runs = append(runs, RunEntry{RunAt: rs.RunAt, Summaries: rs.Summaries, File: e.Name()})
+		runs = append(runs, RunEntry{RunAt: rs.RunAt, Summaries: rs.Summaries, File: e.Name(), RAGDegraded: rs.RAGDegraded})
 	}
 
 	sort.Slice(runs, func(i, j int) bool {
@@ -139,6 +141,12 @@ func FprintDeltas(out io.Writer, runs []RunEntry, deltas []Delta) {
 		first.RunAt.Format("2006-01-02"),
 		last.RunAt.Format("2006-01-02"),
 	)
+
+	for _, r := range runs {
+		if r.RAGDegraded {
+			fmt.Fprintf(out, "WARN: %s has rag_degraded=true (RAG ran as no-rag); its cosine/score/compressed are not comparable\n", r.File)
+		}
+	}
 
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "MODEL\tCONDITION\tRECALL_Δ\tACCURACY_Δ\tLATENCY_Δ")
