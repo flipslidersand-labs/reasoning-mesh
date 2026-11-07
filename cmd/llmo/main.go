@@ -79,6 +79,7 @@ func runEval(cfg *config.Config, args []string) {
 	modelsFlag := fs.String("models", "", "comma-separated model names (default: router+knowledge from config)")
 	judgeFlag := fs.String("judge-model", "", "model that scores answers (default: first of -models; a single model then grades itself)")
 	condFlag := fs.String("conditions", "all", "conditions to run: all | no-rag | cosine | score | compressed")
+	allowNoop := fs.Bool("allow-noop-rag", false, "continue with NoopRetriever if Qdrant is unreachable (results are marked rag_degraded)")
 	cooldownSec := fs.Int("cooldown", 5, "seconds to wait between requests (increase to prevent GPU thermal throttling)")
 	_ = fs.Parse(args)
 
@@ -101,7 +102,14 @@ func runEval(cfg *config.Config, args []string) {
 		log.Fatalf("ollama unreachable: %v", err)
 	}
 
-	rm := buildRetrieverMap(ctx, cfg)
+	rm := eval.RetrieverMap{}
+	ragDegraded := false
+	if needsRAG(conditions) {
+		rm, ragDegraded, err = buildRetrieverMap(ctx, cfg, *allowNoop)
+		if err != nil {
+			log.Fatalf("%v", err)
+		}
+	}
 	runner := eval.NewRunnerWithRetrieverMap(ollamaClient, rm, models, conditions).
 		WithCooldown(time.Duration(*cooldownSec) * time.Second)
 	if *judgeFlag != "" {
@@ -123,26 +131,39 @@ func runEval(cfg *config.Config, args []string) {
 		log.Fatalf("mkdir %s: %v", *outDir, err)
 	}
 	outPath := filepath.Join(*outDir, time.Now().Format("20060102-150405")+".json")
-	if err := eval.SaveJSON(results, outPath); err != nil {
+	if err := eval.SaveRunJSON(results, outPath, ragDegraded); err != nil {
 		log.Fatalf("save results: %v", err)
 	}
 	fmt.Printf("\nResults saved to %s\n", outPath)
 }
 
+func needsRAG(conds []eval.Condition) bool {
+	for _, c := range conds {
+		if c != eval.CondNoRAG {
+			return true
+		}
+	}
+	return false
+}
+
 // buildRetrieverMap wires Qdrant + e5 embedder into per-condition retrievers.
-// Falls back to NoopRetriever for all RAG conditions if Qdrant is unavailable.
-func buildRetrieverMap(ctx context.Context, cfg *config.Config) eval.RetrieverMap {
+// If Qdrant is unreachable it returns an error, unless allowNoop is set, in
+// which case all RAG conditions use NoopRetriever and degraded is true.
+func buildRetrieverMap(ctx context.Context, cfg *config.Config, allowNoop bool) (rm eval.RetrieverMap, degraded bool, err error) {
 	noop := eval.NoopRetriever{}
-	rm := eval.RetrieverMap{
+	rm = eval.RetrieverMap{
 		eval.CondCosine:     noop,
 		eval.CondScore:      noop,
 		eval.CondCompressed: noop,
 	}
 
 	qc := qdrant.New(cfg.Qdrant.Endpoint).WithAPIKey(cfg.Qdrant.APIKey)
-	if err := qc.Ping(ctx); err != nil {
-		log.Printf("WARN: Qdrant unreachable (%v) — RAG conditions will use NoopRetriever", err)
-		return rm
+	if perr := qc.Ping(ctx); perr != nil {
+		if !allowNoop {
+			return nil, false, fmt.Errorf("Qdrant unreachable (%v); RAG results would equal no-rag (pass -allow-noop-rag to continue)", perr)
+		}
+		log.Printf("WARN: Qdrant unreachable (%v) — RAG conditions use NoopRetriever; result marked rag_degraded", perr)
+		return rm, true, nil
 	}
 
 	emb := knowledge.NewEmbedderWithAuth(cfg.Embedder.Endpoint, cfg.Embedder.APIKey, cfg.Embedder.Collection)
@@ -153,7 +174,7 @@ func buildRetrieverMap(ctx context.Context, cfg *config.Config) eval.RetrieverMa
 	rm[eval.CondScore] = knowledge.NewQdrantRetriever(qc, emb, col, scorer, eval.CondScore)
 	rm[eval.CondCompressed] = knowledge.NewQdrantRetriever(qc, emb, col, scorer, eval.CondCosine) // same as cosine; compression done in runner
 	log.Printf("Qdrant OK — RAG conditions wired (%s)", cfg.Qdrant.Endpoint)
-	return rm
+	return rm, false, nil
 }
 
 func resolveModels(cfg *config.Config, flag string) []string {

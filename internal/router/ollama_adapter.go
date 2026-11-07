@@ -34,5 +34,6 @@ func (a *OllamaAdapter) Generate(ctx context.Context, prompt string) (Response, 
 		PromptTokens: full.PromptEvalCount,
 		TotalTokens:  full.PromptEvalCount + full.EvalCount,
 		Model:        full.Model,
+		Truncated:    full.Truncated(),
 	}, nil
 }
