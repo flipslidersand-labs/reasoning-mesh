@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/flipslidersand/reasoning-mesh/internal/config"
@@ -184,5 +185,33 @@ func TestRunAsk_ServerFlagTrailingSlash(t *testing.T) {
 	})
 	if gotPath != "/v1/route" {
 		t.Errorf("path = %q, want /v1/route", gotPath)
+	}
+}
+
+func TestRunAsk_TruncatedWarnsOnStderr(t *testing.T) {
+	for _, trunc := range []bool{true, false} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(askResponse{Answer: "cut", Model: "stub", Truncated: trunc})
+		}))
+		orig := os.Stderr
+		pr, pw, _ := os.Pipe()
+		os.Stderr = pw
+		out := captureOutput(func() {
+			if err := runAsk(nil, []string{"--server", srv.URL, "task"}); err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+		pw.Close()
+		os.Stderr = orig
+		buf := make([]byte, 4096)
+		n, _ := pr.Read(buf)
+		srv.Close()
+		if out != "cut\n" {
+			t.Errorf("stdout must stay the answer only: %q", out)
+		}
+		if has := strings.Contains(string(buf[:n]), "truncated"); has != trunc {
+			t.Errorf("trunc=%v stderr=%q", trunc, buf[:n])
+		}
 	}
 }

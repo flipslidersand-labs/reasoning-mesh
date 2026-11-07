@@ -30,7 +30,9 @@ type RouteResponse struct {
 	Model        string `json:"model"`
 	PromptTokens int    `json:"prompt_tokens"`
 	TotalTokens  int    `json:"total_tokens"`
-	Error        string `json:"error,omitempty"`
+	// Truncated is true when the answer hit the model output cap and may be cut off.
+	Truncated bool   `json:"truncated,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 type routeHandler struct {
@@ -75,6 +77,7 @@ func (h *routeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Model:        resp.Model,
 		PromptTokens: resp.PromptTokens,
 		TotalTokens:  resp.TotalTokens,
+		Truncated:    resp.Truncated,
 	}); err != nil {
 		log.Printf("route: encode response: %v", err)
 	}

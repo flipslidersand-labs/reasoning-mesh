@@ -58,3 +58,30 @@ func TestSaveRunJSON_RAGDegradedRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestPrintSummary_TruncatedColumn(t *testing.T) {
+	orig := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	PrintSummary([]Summary{{Model: "m", Condition: CondNoRAG, Count: 3, ErrorCount: 1, TruncatedCount: 2, AvgAccuracy: -1}})
+	w.Close()
+	os.Stdout = orig
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	lines := strings.Split(string(buf[:n]), "\n")
+	var header, row string
+	for _, l := range lines {
+		if strings.HasPrefix(l, "MODEL") {
+			header = l
+		}
+		if strings.HasPrefix(l, "m ") {
+			row = l
+		}
+	}
+	if !strings.HasSuffix(header, "TRUNCATED") {
+		t.Errorf("header lacks TRUNCATED: %q", header)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(row), "2") {
+		t.Errorf("row lacks truncated count: %q", row)
+	}
+}
