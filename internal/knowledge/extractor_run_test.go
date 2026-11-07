@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +20,7 @@ import (
 
 type extRunPoint struct {
 	ID      string         `json:"id"`
+	Vector  []float32      `json:"vector"`
 	Payload map[string]any `json:"payload"`
 }
 
@@ -78,7 +78,7 @@ func newExtRunEnv(t *testing.T, batchSize int) *extRunEnv {
 		}
 		vecs := make([][]float32, len(req.Texts))
 		for i := range vecs {
-			vecs[i] = []float32{0.1, 0.2}
+			vecs[i] = extRunVec(req.Texts[i])
 		}
 		if hasEmpty {
 			vecs[emptyIdx] = []float32{}
@@ -136,6 +136,33 @@ func extRunDiff(n int) string {
 	return b.String()
 }
 
+// extRunVec returns a vector unique to the chunk number embedded in text
+// ("unique<N>("), so a mismatch between items and vectors is detectable.
+func extRunVec(text string) []float32 {
+	return []float32{float32(extRunNum(text)), 0.5}
+}
+
+func extRunNum(text string) int {
+	var n int
+	i := strings.Index(text, "unique")
+	if i < 0 {
+		return -1
+	}
+	_, _ = fmt.Sscanf(text[i:], "unique%d(", &n)
+	return n
+}
+
+// extRunCheckVectors asserts each point carries the vector of its own content.
+func extRunCheckVectors(t *testing.T, pts []extRunPoint) {
+	t.Helper()
+	for _, p := range pts {
+		c, _ := p.Payload["content"].(string)
+		if len(p.Vector) != 2 || int(p.Vector[0]) != extRunNum(c) {
+			t.Errorf("point %q has vector %v, want vector of chunk %d", c, p.Vector, extRunNum(c))
+		}
+	}
+}
+
 func (e *extRunEnv) putSizes() []int {
 	sizes := make([]int, len(e.puts))
 	for i, p := range e.puts {
@@ -144,18 +171,19 @@ func (e *extRunEnv) putSizes() []int {
 	return sizes
 }
 
-func assertSizes(t *testing.T, what string, got, want []int) {
+func extRunAssertSizes(t *testing.T, what string, got, want []int) {
 	t.Helper()
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("%s = %v, want %v", what, got, want)
 	}
 }
 
-func captureLog(t *testing.T) *bytes.Buffer {
+func extRunCaptureLog(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
+	prev := log.Writer()
 	log.SetOutput(&buf)
-	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	t.Cleanup(func() { log.SetOutput(prev) })
 	return &buf
 }
 
@@ -188,19 +216,27 @@ func TestExtractorRun_BatchBoundaries(t *testing.T) {
 			if err := env.ex.Run(context.Background(), "sha1", extRunDiff(tt.chunks), ""); err != nil {
 				t.Fatalf("Run: %v", err)
 			}
-			assertSizes(t, "upsert sizes", env.putSizes(), tt.want)
+			extRunAssertSizes(t, "upsert sizes", env.putSizes(), tt.want)
 			embedSizes := make([]int, len(env.embedCalls))
 			for i, c := range env.embedCalls {
 				embedSizes[i] = len(c)
 			}
-			assertSizes(t, "embed sizes", embedSizes, tt.want)
+			extRunAssertSizes(t, "embed sizes", embedSizes, tt.want)
 			if env.gets != len(tt.want) {
 				t.Errorf("GetByIDs calls = %d, want %d", env.gets, len(tt.want))
 			}
-			// Every chunk is upserted exactly once, in order, with a distinct ID.
+			// Every chunk is upserted exactly once, in order, with a distinct ID
+			// and its own vector.
 			seen := map[string]bool{}
+			next := 0
 			for _, pts := range env.puts {
+				extRunCheckVectors(t, pts)
 				for _, p := range pts {
+					c, _ := p.Payload["content"].(string)
+					if extRunNum(c) != next {
+						t.Errorf("point order: got chunk %d, want %d", extRunNum(c), next)
+					}
+					next++
 					if seen[p.ID] {
 						t.Errorf("duplicate point ID %s", p.ID)
 					}
@@ -250,14 +286,14 @@ func TestExtractorRun_PayloadDefaults(t *testing.T) {
 func TestExtractorRun_EmbedFailureSkipsOnlyThatBatch(t *testing.T) {
 	env := newExtRunEnv(t, 2)
 	env.embedFail[2] = true // second batch
-	logs := captureLog(t)
+	logs := extRunCaptureLog(t)
 	if err := env.ex.Run(context.Background(), "sha", extRunDiff(5), ""); err != nil {
 		t.Fatalf("Run must not return an error on partial failure: %v", err)
 	}
 	if len(env.embedCalls) != 3 {
 		t.Errorf("embed calls = %d, want 3 (later batches must still run)", len(env.embedCalls))
 	}
-	assertSizes(t, "upsert sizes", env.putSizes(), []int{2, 1})
+	extRunAssertSizes(t, "upsert sizes", env.putSizes(), []int{2, 1})
 	if !strings.Contains(logs.String(), "2/5 chunks skipped") {
 		t.Errorf("expected skipped summary, log:\n%s", logs.String())
 	}
@@ -266,7 +302,7 @@ func TestExtractorRun_EmbedFailureSkipsOnlyThatBatch(t *testing.T) {
 func TestExtractorRun_AllEmbedsFail(t *testing.T) {
 	env := newExtRunEnv(t, 2)
 	env.embedFail[1], env.embedFail[2], env.embedFail[3] = true, true, true
-	logs := captureLog(t)
+	logs := extRunCaptureLog(t)
 	if err := env.ex.Run(context.Background(), "sha", extRunDiff(5), ""); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -282,11 +318,14 @@ func TestExtractorRun_ShortAndEmptyVectorsAreSkipped(t *testing.T) {
 	env := newExtRunEnv(t, 3)
 	env.embedShort[1] = 1 // batch 1: 3 texts, 2 vectors -> last item skipped
 	env.embedEmpty[2] = 0 // batch 2: first vector empty -> skipped
-	logs := captureLog(t)
+	logs := extRunCaptureLog(t)
 	if err := env.ex.Run(context.Background(), "sha", extRunDiff(6), ""); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	assertSizes(t, "upsert sizes", env.putSizes(), []int{2, 2})
+	extRunAssertSizes(t, "upsert sizes", env.putSizes(), []int{2, 2})
+	for _, pts := range env.puts {
+		extRunCheckVectors(t, pts)
+	}
 	// The point kept from batch 1 must be the first two texts, not the dropped third.
 	for i, p := range env.puts[0] {
 		if c, _ := p.Payload["content"].(string); !strings.Contains(c, fmt.Sprintf("unique%d(", i)) {
@@ -304,7 +343,7 @@ func TestExtractorRun_ShortAndEmptyVectorsAreSkipped(t *testing.T) {
 	}
 }
 
-func TestExtractorRun_AllVectorsEmptyNoUpsert(t *testing.T) {
+func TestExtractorRun_NoVectorsReturnedNoUpsert(t *testing.T) {
 	env := newExtRunEnv(t, 2)
 	env.embedShort[1] = 2 // zero vectors returned for the only batch
 	if err := env.ex.Run(context.Background(), "sha", extRunDiff(2), ""); err != nil {
@@ -318,11 +357,11 @@ func TestExtractorRun_AllVectorsEmptyNoUpsert(t *testing.T) {
 func TestExtractorRun_UpsertFailureContinuesWithNextBatch(t *testing.T) {
 	env := newExtRunEnv(t, 2)
 	env.putFail[1] = true
-	logs := captureLog(t)
+	logs := extRunCaptureLog(t)
 	if err := env.ex.Run(context.Background(), "sha", extRunDiff(5), ""); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	assertSizes(t, "upsert attempts", env.putSizes(), []int{2, 2, 1})
+	extRunAssertSizes(t, "upsert attempts", env.putSizes(), []int{2, 2, 1})
 	if !strings.Contains(logs.String(), "2/5 chunks skipped") {
 		t.Errorf("expected 2/5 skipped, log:\n%s", logs.String())
 	}
@@ -331,14 +370,18 @@ func TestExtractorRun_UpsertFailureContinuesWithNextBatch(t *testing.T) {
 func TestExtractorRun_LookupFailureSkipsBatchWithoutUpsert(t *testing.T) {
 	env := newExtRunEnv(t, 2)
 	env.getFail[1] = true
+	logs := extRunCaptureLog(t)
 	if err := env.ex.Run(context.Background(), "sha", extRunDiff(5), ""); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if env.gets != 3 {
 		t.Errorf("GetByIDs calls = %d, want 3", env.gets)
 	}
+	if !strings.Contains(logs.String(), "2/5 chunks skipped") {
+		t.Errorf("expected 2/5 skipped, log:\n%s", logs.String())
+	}
 	// First batch must not be upserted (would reset stats); the rest continue.
-	assertSizes(t, "upsert sizes", env.putSizes(), []int{2, 1})
+	extRunAssertSizes(t, "upsert sizes", env.putSizes(), []int{2, 1})
 }
 
 func TestExtractorRun_CILogChunksAreIncluded(t *testing.T) {
@@ -348,5 +391,5 @@ func TestExtractorRun_CILogChunksAreIncluded(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	// 1 diff chunk + 1 CI chunk fit in a single batch of 2.
-	assertSizes(t, "upsert sizes", env.putSizes(), []int{2})
+	extRunAssertSizes(t, "upsert sizes", env.putSizes(), []int{2})
 }
