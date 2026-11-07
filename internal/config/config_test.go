@@ -288,3 +288,47 @@ func TestValidate_KnowledgeCollectionRequired(t *testing.T) {
 		t.Fatalf("expected qdrant.collections.knowledge error, got %v", err)
 	}
 }
+
+// #273: unset ${VAR} must fail Load (names only, never values).
+func TestLoad_UnsetEnvVarErrors(t *testing.T) {
+	os.Unsetenv("RM_TEST_UNSET_A")
+	os.Unsetenv("RM_TEST_UNSET_B")
+	t.Setenv("RM_TEST_SET", "topsecretvalue")
+	path := t.TempDir() + "/config.yaml"
+	y := "# ${RM_TEST_IN_COMMENT}\nqdrant:\n  api_key: \"${RM_TEST_UNSET_A}\"\nembedder:\n  api_key: \"${RM_TEST_UNSET_B}${RM_TEST_SET}\"\n"
+	if err := os.WriteFile(path, []byte(y), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for unset env vars")
+	}
+	msg := err.Error()
+	for _, want := range []string{"unset env var(s)", "RM_TEST_UNSET_A", "RM_TEST_UNSET_B", path} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error %q missing %q", msg, want)
+		}
+	}
+	for _, bad := range []string{"topsecretvalue", "RM_TEST_IN_COMMENT"} {
+		if strings.Contains(msg, bad) {
+			t.Errorf("error %q must not contain %q", msg, bad)
+		}
+	}
+}
+
+func TestLoad_EnvDefaultSyntax(t *testing.T) {
+	os.Unsetenv("RM_TEST_UNSET_C")
+	t.Setenv("RM_TEST_EMPTY", "")
+	path := t.TempDir() + "/config.yaml"
+	y := "qdrant:\n  api_key: \"${RM_TEST_UNSET_C:-}\"\nembedder:\n  api_key: \"${RM_TEST_UNSET_C:-dflt}\"\nserver:\n  host: \"${RM_TEST_EMPTY}\"\n"
+	if err := os.WriteFile(path, []byte(y), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Qdrant.APIKey != "" || cfg.Embedder.APIKey != "dflt" || cfg.Server.Host != "" {
+		t.Fatalf("got %q %q %q", cfg.Qdrant.APIKey, cfg.Embedder.APIKey, cfg.Server.Host)
+	}
+}

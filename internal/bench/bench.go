@@ -30,7 +30,7 @@ type Delta struct {
 	Model         string
 	Condition     eval.Condition
 	RecallDelta   float64 // positive = improvement
-	AccuracyDelta float64 // positive = improvement
+	AccuracyDelta float64 // positive = improvement; NaN = ungraded (not JSON-encodable)
 	LatencyDelta  float64 // negative = improvement
 	RunCount      int     // number of runs in the series
 }
@@ -95,7 +95,7 @@ func ComputeDeltas(runs []RunEntry) []Delta {
 			continue
 		}
 		recallDelta := lastS.AvgRecall - firstS.AvgRecall
-		accDelta := 0.0
+		accDelta := math.NaN() // ungraded (AvgAccuracy < 0) in either run
 		if lastS.AvgAccuracy >= 0 && firstS.AvgAccuracy >= 0 {
 			accDelta = lastS.AvgAccuracy - firstS.AvgAccuracy
 		}
@@ -122,20 +122,25 @@ func ComputeDeltas(runs []RunEntry) []Delta {
 
 // PrintDeltas writes a formatted delta table to stdout.
 func PrintDeltas(runs []RunEntry, deltas []Delta) {
+	FprintDeltas(os.Stdout, runs, deltas)
+}
+
+// FprintDeltas writes a formatted delta table to out.
+func FprintDeltas(out io.Writer, runs []RunEntry, deltas []Delta) {
 	if len(runs) < 2 {
-		fmt.Println("longitudinal bench: need ≥2 runs, nothing to compare")
+		fmt.Fprintln(out, "longitudinal bench: need ≥2 runs, nothing to compare")
 		return
 	}
 
 	first := runs[0]
 	last := runs[len(runs)-1]
-	fmt.Printf("=== Longitudinal Benchmark (%d runs: %s → %s) ===\n",
+	fmt.Fprintf(out, "=== Longitudinal Benchmark (%d runs: %s → %s) ===\n",
 		len(runs),
 		first.RunAt.Format("2006-01-02"),
 		last.RunAt.Format("2006-01-02"),
 	)
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "MODEL\tCONDITION\tRECALL_Δ\tACCURACY_Δ\tLATENCY_Δ")
 	fmt.Fprintln(w, "-----\t---------\t--------\t----------\t---------")
 	for _, d := range deltas {
@@ -154,6 +159,9 @@ func PrintDeltas(runs []RunEntry, deltas []Delta) {
 }
 
 func fmtDelta(v float64) string {
+	if v == 0 {
+		v = 0 // normalise -0
+	}
 	sign := "+"
 	if v < 0 {
 		sign = ""
@@ -162,6 +170,9 @@ func fmtDelta(v float64) string {
 }
 
 func fmtLatency(v float64) string {
+	if v == 0 {
+		v = 0 // normalise -0
+	}
 	sign := "+"
 	if v < 0 {
 		sign = ""

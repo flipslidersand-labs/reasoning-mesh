@@ -16,18 +16,38 @@ import (
 // maxConfigSize limits config file reads to 1 MiB to prevent OOM from oversized files.
 const maxConfigSize = 1 << 20 // 1 MiB
 
-// envVarRe matches ${VAR_NAME} placeholders.
-var envVarRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+// envVarRe matches ${VAR} and ${VAR:-default} placeholders.
+var envVarRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}`)
 
-// expandEnv replaces ${VAR} occurrences in s with the corresponding OS environment variable.
-func expandEnv(s string) string {
-	return envVarRe.ReplaceAllStringFunc(s, func(m string) string {
-		name := m[2 : len(m)-1] // strip ${ and }
-		if v, ok := os.LookupEnv(name); ok {
-			return v
+// expandEnv replaces ${VAR} occurrences in s with the corresponding OS environment
+// variable. ${VAR:-default} falls back to default when VAR is unset (use
+// ${VAR:-} to allow an empty value). Names of unset variables that have no
+// default are returned (never their values). Full-line YAML comments are left
+// untouched so documentation examples do not trigger errors.
+func expandEnv(s string) (string, []string) {
+	var missing []string
+	seen := map[string]bool{}
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
 		}
-		return m // leave unexpanded if not set
-	})
+		lines[i] = envVarRe.ReplaceAllStringFunc(line, func(m string) string {
+			sub := envVarRe.FindStringSubmatch(m)
+			if v, ok := os.LookupEnv(sub[1]); ok {
+				return v
+			}
+			if sub[2] != "" {
+				return sub[3]
+			}
+			if !seen[sub[1]] {
+				seen[sub[1]] = true
+				missing = append(missing, sub[1])
+			}
+			return m
+		})
+	}
+	return strings.Join(lines, "\n"), missing
 }
 
 type Config struct {
@@ -42,6 +62,9 @@ type OllamaConfig struct {
 	Endpoint       string            `yaml:"endpoint"`
 	TimeoutSeconds int               `yaml:"timeout_seconds"`
 	Models         map[string]string `yaml:"models"`
+	// NumPredict caps generated tokens per /api/generate call.
+	// 0 = client default (ollama.DefaultNumPredict).
+	NumPredict int `yaml:"num_predict"`
 }
 
 type QdrantConfig struct {
@@ -149,7 +172,10 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Expand ${ENV_VAR} placeholders before unmarshalling.
-	expanded := expandEnv(string(data))
+	expanded, missing := expandEnv(string(data))
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("config %s: unset env var(s): %s", path, strings.Join(missing, ", "))
+	}
 
 	// Defaults first so an omitted or partial scorer: keeps the rest (#274).
 	cfg := Config{Scorer: knowledge.DefaultScorerConfig()}

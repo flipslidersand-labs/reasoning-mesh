@@ -56,7 +56,7 @@ func run(cfg *config.Config) error {
 	}
 
 	// --- Ollama ---
-	ollamaClient := ollama.New(cfg.Ollama.Endpoint, cfg.Ollama.TimeoutSeconds)
+	ollamaClient := ollama.New(cfg.Ollama.Endpoint, cfg.Ollama.TimeoutSeconds).WithNumPredict(cfg.Ollama.NumPredict)
 	if err := ollamaClient.Ping(ctx); err != nil {
 		return fmt.Errorf("ollama unreachable: %w", err)
 	}
