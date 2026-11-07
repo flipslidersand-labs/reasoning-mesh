@@ -14,6 +14,9 @@ import (
 // expected token leaks through timing (ConstantTimeCompare returns early
 // on a length mismatch).
 func Matches(auth, token string) bool {
+	if token == "" {
+		return false // never fail open on an unset expected token
+	}
 	if !strings.HasPrefix(auth, "Bearer ") {
 		return false
 	}

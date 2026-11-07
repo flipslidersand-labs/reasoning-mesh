@@ -31,3 +31,11 @@ func TestMatches(t *testing.T) {
 		})
 	}
 }
+
+func TestMatches_EmptyExpectedToken(t *testing.T) {
+	for _, auth := range []string{"Bearer ", "", "Bearer x"} {
+		if bearer.Matches(auth, "") {
+			t.Errorf("Matches(%q, \"\") = true, want false", auth)
+		}
+	}
+}

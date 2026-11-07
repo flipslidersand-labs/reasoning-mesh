@@ -3,6 +3,10 @@
 set -uo pipefail
 
 ORCH_URL="${LLMO_ORCH_URL:-http://localhost:8765}"
+# keep the token out of xtrace output for everything that touches it
+xtrace_was_on=0
+[[ $- == *x* ]] && xtrace_was_on=1
+set +x
 TOKEN="${LLMO_TRIGGER_TOKEN:-}"
 REPO_DIR="${1:-$(git rev-parse --show-toplevel)}"
 
@@ -10,11 +14,12 @@ REPO_DIR="${1:-$(git rev-parse --show-toplevel)}"
 AUTH_ARGS=()
 if [ -n "$TOKEN" ]; then
   umask 077
-  AUTH_HDR_FILE=$(mktemp)
+  AUTH_HDR_FILE=$(mktemp) || exit 1
   trap 'rm -f "$AUTH_HDR_FILE"' EXIT
   printf 'Authorization: Bearer %s\n' "$TOKEN" > "$AUTH_HDR_FILE"
   AUTH_ARGS=(-H "@$AUTH_HDR_FILE")
 fi
+[ "$xtrace_was_on" = 1 ] && set -x
 
 SUCCESS=0
 SKIP=0
