@@ -42,3 +42,6 @@ func (s *PendingStore) SetNow(f func() time.Time) {
 	defer s.mu.Unlock()
 	s.now = f
 }
+
+// PendingTTL exposes the production TTL to tests.
+const PendingTTL = pendingTTL

@@ -252,9 +252,35 @@ func TestPendingStore_Sweep_ExpiresAtEqualsNow_Kept(t *testing.T) {
 	s.SetExpiry(drop, fixedNow.Add(-time.Nanosecond))
 	s.Sweep()
 	if s.Len() != 1 {
-		t.Fatalf("Len after Sweep = %d, want 1", s.Len())
+		t.Fatalf("Len after Sweep = %d, want 1 (expiresAt==now kept, 1ns past swept)", s.Len())
 	}
-	if got := s.Get(keep); len(got) != 1 {
-		t.Errorf("entry with expiresAt==now was swept: %v", got)
+}
+
+// Put stamps expiresAt from the injected clock: valid at exactly TTL, expired
+// 1ns later.
+func TestPendingStore_Put_TTLStampedFromInjectedClock(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		advance time.Duration
+		valid   bool
+	}{
+		{"at TTL", server.PendingTTL, true},
+		{"TTL+1ns", server.PendingTTL + time.Nanosecond, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := server.NewPendingStore()
+			defer s.Stop()
+			cur := fixedNow
+			s.SetNow(func() time.Time { return cur })
+			id := s.Put([]string{"k"})
+			cur = fixedNow.Add(tc.advance)
+			got := s.Get(id)
+			if tc.valid && len(got) != 1 {
+				t.Errorf("Get = %v, want [k]", got)
+			}
+			if !tc.valid && got != nil {
+				t.Errorf("Get = %v, want nil", got)
+			}
+		})
 	}
 }

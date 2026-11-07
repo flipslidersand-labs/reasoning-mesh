@@ -139,7 +139,8 @@ func (s *PendingStore) Sweep() {
 	}
 }
 
-// clock returns the current time. s.mu must be held.
+// clock returns the current time. It is called with s.mu held, so an injected
+// now function must not touch the store (that would deadlock).
 func (s *PendingStore) clock() time.Time {
 	if s.now != nil {
 		return s.now()
