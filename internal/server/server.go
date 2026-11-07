@@ -3,11 +3,11 @@ package server
 
 import (
 	"context"
-	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"sync"
 
+	"github.com/flipslidersand/reasoning-mesh/internal/bearer"
 	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
 	"github.com/flipslidersand/reasoning-mesh/internal/router"
 	"github.com/flipslidersand/reasoning-mesh/internal/trigger"
@@ -92,7 +92,7 @@ func bearerAuth(token string, next http.Handler) http.Handler {
 			return
 		}
 		auth := r.Header.Get("Authorization")
-		if subtle.ConstantTimeCompare([]byte(auth), []byte("Bearer "+token)) != 1 {
+		if !bearer.Matches(auth, token) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
