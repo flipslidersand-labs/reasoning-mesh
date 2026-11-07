@@ -8,6 +8,8 @@ type Response struct {
 	PromptTokens int
 	TotalTokens  int
 	Model        string
+	// Truncated is true when generation hit the output token cap, so Text may be cut off.
+	Truncated bool
 }
 
 // ModelAdapter is the common interface for all LLM backends.
