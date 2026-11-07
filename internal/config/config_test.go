@@ -79,6 +79,15 @@ func TestValidate_ZeroTimeout(t *testing.T) {
 	}
 }
 
+func TestValidate_NegativeTimeout(t *testing.T) {
+	cfg := validConfig()
+	cfg.Ollama.TimeoutSeconds = -1
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "ollama.timeout_seconds") {
+		t.Errorf("expected ollama.timeout_seconds error, got %v", err)
+	}
+}
+
 func TestValidate_TimeoutUpperBound(t *testing.T) {
 	cases := []struct {
 		name string
