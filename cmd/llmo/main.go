@@ -185,10 +185,10 @@ func buildRetrieverMap(ctx context.Context, cfg *config.Config, allowNoop bool) 
 // error if no model name remains.
 func resolveModels(cfg *config.Config, flag string) ([]string, error) {
 	candidates := splitComma(flag)
-	source := "-models"
+	hint := "pass at least one model name to -models"
 	if flag == "" {
 		candidates = []string{cfg.Ollama.Models["router"], cfg.Ollama.Models["knowledge"]}
-		source = "config ollama.models (router, knowledge)"
+		hint = "set ollama.models.router/knowledge in config"
 	}
 	var models []string
 	for _, m := range candidates {
@@ -197,7 +197,7 @@ func resolveModels(cfg *config.Config, flag string) ([]string, error) {
 		}
 	}
 	if len(models) == 0 {
-		return nil, fmt.Errorf("no model names resolved from %s; set ollama.models.router/knowledge in config or pass -models", source)
+		return nil, fmt.Errorf("no model names resolved: %s", hint)
 	}
 	return models, nil
 }

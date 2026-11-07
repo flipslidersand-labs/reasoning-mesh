@@ -93,6 +93,7 @@ func TestResolveModels(t *testing.T) {
 		{"flag drops empty elements", full, "a,,b", []string{"a", "b"}, false},
 		{"flag drops whitespace-only and trailing", full, ",a, ,b,", []string{"a", "b"}, false},
 		{"flag only separators is an error", full, ",", nil, true},
+		{"flag whitespace only is an error", full, " ", nil, true},
 		{"empty flag uses router and knowledge", full, "", []string{"r:1b", "k:9b"}, false},
 		{"empty flag drops one missing key", onlyRouter, "", []string{"r:1b"}, false},
 		{"empty flag with missing keys is an error", noKeys, "", nil, true},
@@ -119,5 +120,25 @@ func TestResolveModels_NilModelsMap(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "ollama.models") {
 		t.Errorf("error %q should mention ollama.models", err)
+	}
+	if strings.Contains(err.Error(), "-models") {
+		t.Errorf("config-derived error %q should not suggest -models", err)
+	}
+}
+
+func TestResolveModels_FlagErrorMentionsFlag(t *testing.T) {
+	full := &config.Config{}
+	full.Ollama.Models = map[string]string{"router": "r:1b", "knowledge": "k:9b"}
+	for _, flag := range []string{",", " "} {
+		_, err := resolveModels(full, flag)
+		if err == nil {
+			t.Fatalf("resolveModels(%q) want error", flag)
+		}
+		if !strings.Contains(err.Error(), "-models") {
+			t.Errorf("flag-derived error %q should mention -models", err)
+		}
+		if strings.Contains(err.Error(), "ollama.models") {
+			t.Errorf("flag-derived error %q should not point at ollama.models", err)
+		}
 	}
 }
