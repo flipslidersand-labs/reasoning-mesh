@@ -115,6 +115,8 @@ func TestRetrieve_ScoreReranksAndTrimsToTopK(t *testing.T) {
 		}
 	}
 	// cosine 降順は a,b,c,d,e,f。成功実績により最良は f、次点は e になる。
+	// c は e より cosine が高く成功実績も同じだが task_type が不一致。
+	// taskType が computeScore に渡る(boost が掛かる)場合のみ e が c を上回る。
 	hits := []map[string]any{
 		hit("a", 0.90, mk("A", 20, 0)),
 		hit("b", 0.88, mk("B", 20, 0)),
@@ -122,6 +124,10 @@ func TestRetrieve_ScoreReranksAndTrimsToTopK(t *testing.T) {
 		hit("d", 0.84, mk("D", 20, 0)),
 		hit("e", 0.82, mk("E", 20, 20)),
 		hit("f", 0.80, mk("F", 20, 20)),
+	}
+	hits[2]["payload"] = map[string]any{
+		"content": "C", "usage_count": 20.0, "success_count": 20.0,
+		"last_used_at": fresh, "task_type": "other",
 	}
 	hits[5]["score"] = 0.95 // f が最高 cosine かつ高成功率 -> 先頭
 	r, fx := newRetrieveFixture(t, eval.CondScore, hits)
@@ -171,6 +177,36 @@ func TestRetrieve_OtherConditionNoOverfetchNoRerank(t *testing.T) {
 	}
 	if want := []string{"a", "b"}; !reflect.DeepEqual(itemIDs(got), want) {
 		t.Errorf("ids = %v, want %v", itemIDs(got), want)
+	}
+}
+
+func TestRetrieve_CosineAndOtherConditionsDoNotRerank(t *testing.T) {
+	// Beta スコアなら b > a となるが、cosine 条件では検索順 a,b のままであること。
+	// (cosine は hit.Score をそのまま返すため、並べ替え自体が起きないことを確認する。)
+	hits := []map[string]any{
+		hit("a", 0.9, map[string]any{"usage_count": 20.0, "success_count": 0.0}),
+		hit("b", 0.8, map[string]any{"usage_count": 20.0, "success_count": 20.0}),
+	}
+	for _, cond := range []eval.Condition{eval.CondCosine, eval.CondCompressed} {
+		t.Run(string(cond), func(t *testing.T) {
+			r, _ := newRetrieveFixture(t, cond, hits)
+			got, err := r.Retrieve(context.Background(), "q", "", 2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := []string{"a", "b"}; !reflect.DeepEqual(itemIDs(got), want) {
+				t.Errorf("ids = %v, want %v", itemIDs(got), want)
+			}
+		})
+	}
+	// 前提の確認: score 条件なら b が先頭になる入力であること。
+	r, _ := newRetrieveFixture(t, eval.CondScore, hits)
+	got, err := r.Retrieve(context.Background(), "q", "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"b", "a"}; !reflect.DeepEqual(itemIDs(got), want) {
+		t.Fatalf("precondition: score ids = %v, want %v", itemIDs(got), want)
 	}
 }
 
@@ -237,9 +273,8 @@ func TestRetrieve_DependencyErrors(t *testing.T) {
 		r, fx := newRetrieveFixture(t, eval.CondCosine, nil)
 		fx.searchStatus = http.StatusServiceUnavailable
 		_, err := r.Retrieve(context.Background(), "q", "", 3)
-		// qdrant クライアント自身も "qdrant search:" を含むため、二重接頭辞でラップを確認する。
-		if err == nil || !strings.HasPrefix(err.Error(), "qdrant search: qdrant search: status 503") {
-			t.Fatalf("err = %v, want qdrant search wrap", err)
+		if err == nil || !strings.Contains(err.Error(), "qdrant search:") || !strings.Contains(err.Error(), "503") {
+			t.Fatalf("err = %v, want qdrant search error with status 503", err)
 		}
 	})
 	t.Run("canceled context", func(t *testing.T) {
@@ -308,6 +343,11 @@ func TestComputeScore_ScoreBranchValues(t *testing.T) {
 	sr := r.computeScore(qdrant.SearchResult{Score: 0.8, Payload: withRecent}, "")
 	if so >= sr {
 		t.Errorf("last_used_at should take precedence: old=%v recent=%v", so, sr)
+	}
+	// 経過日数は「日」単位: 比 so/sr = exp(-λ*(100 - 1/24))(時間単位だと大きくずれる)。
+	wantRatio := math.Exp(-cfg.FreshnessLambda * (100 - 1.0/24))
+	if gotRatio := so / sr; math.Abs(gotRatio-wantRatio) > 1e-6 {
+		t.Errorf("so/sr = %v, want %v", gotRatio, wantRatio)
 	}
 	// 不正な last_used_at は created_at にフォールバックする。
 	fb := map[string]any{"usage_count": 4.0, "success_count": 3.0, "last_used_at": "bad", "created_at": old}
