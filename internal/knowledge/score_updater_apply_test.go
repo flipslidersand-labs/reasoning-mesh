@@ -200,7 +200,9 @@ func TestScoreUpdater_Apply(t *testing.T) {
 func TestScoreUpdater_ApplyNilQdrant(t *testing.T) {
 	u := knowledge.NewScoreUpdater(nil, "rm_knowledge", 1)
 	u.Start()
-	u.Send(knowledge.FeedbackEvent{KnowledgeIDs: []string{"a"}, Outcome: true})
+	if !u.Send(knowledge.FeedbackEvent{KnowledgeIDs: []string{"a"}, Outcome: true}) {
+		t.Fatal("Send returned false")
+	}
 	u.Stop()
 }
 
@@ -217,18 +219,23 @@ func TestScoreUpdater_ApplyConcurrencyCap(t *testing.T) {
 	}
 
 	var (
-		mu       sync.Mutex
-		cur, max int
+		mu           sync.Mutex
+		cur, maxSeen int
 	)
 	reached := make(chan struct{})
+	over := make(chan struct{})
+	var overOnce sync.Once
 	release := make(chan struct{})
 	var once sync.Once
 	f := &scoreFakeQdrant{stored: stored}
 	f.onUpdate = func() {
 		mu.Lock()
 		cur++
-		if cur > max {
-			max = cur
+		if cur > maxSeen {
+			maxSeen = cur
+		}
+		if cur > capN {
+			overOnce.Do(func() { close(over) })
 		}
 		if cur == capN {
 			once.Do(func() { close(reached) })
@@ -240,12 +247,16 @@ func TestScoreUpdater_ApplyConcurrencyCap(t *testing.T) {
 		mu.Unlock()
 	}
 
-	// Release once the cap is saturated: the first 16 are blocked in the
-	// handler, so any further in-flight request would push max above 16
-	// before it is observed after Stop below.
+	// Wait for the cap to saturate, then give a 17th request a grace period
+	// to show up (the first 16 are held in the handler, so a correct cap
+	// admits none). An overshoot releases immediately via over.
 	go func() {
 		select {
 		case <-reached:
+			select {
+			case <-over:
+			case <-time.After(200 * time.Millisecond):
+			}
 		case <-time.After(5 * time.Second):
 		}
 		close(release)
@@ -256,8 +267,8 @@ func TestScoreUpdater_ApplyConcurrencyCap(t *testing.T) {
 	if f.updCalls != total {
 		t.Errorf("set_payload calls = %d, want %d", f.updCalls, total)
 	}
-	if max != capN {
-		t.Errorf("max concurrent set_payload = %d, want %d", max, capN)
+	if maxSeen != capN {
+		t.Errorf("max concurrent set_payload = %d, want %d", maxSeen, capN)
 	}
 }
 
