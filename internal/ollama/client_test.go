@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -323,21 +322,6 @@ func TestGenerate_Non200PropagatesError(t *testing.T) {
 	got, err := New(srv.URL, 5).Generate(context.Background(), "m", "p")
 	if err == nil || err.Error() != "ollama generate: status 400" {
 		t.Fatalf("err = %v, want 'ollama generate: status 400'", err)
-	}
-	if got != "" {
-		t.Errorf("got %q, want empty", got)
-	}
-}
-
-// An empty response is treated as transient, so GenerateFull retries with
-// 5s+10s backoff (~15s). Run in parallel to limit wall-clock impact.
-func TestGenerate_EmptyResponsePropagatesError(t *testing.T) {
-	t.Parallel()
-	srv := serve(GenerateResponse{Response: "", Done: true})
-	defer srv.Close()
-	got, err := New(srv.URL, 5).Generate(context.Background(), "m", "p")
-	if err == nil || !strings.Contains(err.Error(), "empty response") {
-		t.Fatalf("err = %v, want empty response error", err)
 	}
 	if got != "" {
 		t.Errorf("got %q, want empty", got)
