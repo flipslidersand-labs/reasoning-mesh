@@ -94,6 +94,10 @@ type ServerConfig struct {
 	Port int    `yaml:"port"`
 }
 
+// MaxTimeoutSeconds is the upper bound (24h) for *.timeout_seconds settings.
+// It keeps time.Duration(x)*time.Second from overflowing into a negative value.
+const MaxTimeoutSeconds = 86400
+
 // Validate returns an error listing all missing or invalid required fields.
 func (c *Config) Validate() error {
 	var errs []string
@@ -102,6 +106,11 @@ func (c *Config) Validate() error {
 	}
 	if c.Ollama.TimeoutSeconds <= 0 {
 		errs = append(errs, "ollama.timeout_seconds must be > 0")
+	} else if c.Ollama.TimeoutSeconds > MaxTimeoutSeconds {
+		errs = append(errs, fmt.Sprintf("ollama.timeout_seconds must be <= %d", MaxTimeoutSeconds))
+	}
+	if c.Qdrant.TimeoutSeconds > MaxTimeoutSeconds {
+		errs = append(errs, fmt.Sprintf("qdrant.timeout_seconds must be <= %d", MaxTimeoutSeconds))
 	}
 	if c.Qdrant.Endpoint == "" {
 		errs = append(errs, "qdrant.endpoint required")
