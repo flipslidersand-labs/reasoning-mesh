@@ -1,6 +1,7 @@
 ollama:
   endpoint: "http://YOUR_HOST:11434"
   timeout_seconds: 300
+  # num_predict: 2048  # generation token cap (default 2048)
   models:
     router: "qwen2.5:7b"
     knowledge: "ornith:9b"

@@ -94,7 +94,7 @@ func runEval(cfg *config.Config, args []string) {
 	models := resolveModels(cfg, *modelsFlag)
 	conditions := resolveConditions(*condFlag)
 
-	ollamaClient := ollama.New(cfg.Ollama.Endpoint, cfg.Ollama.TimeoutSeconds)
+	ollamaClient := ollama.New(cfg.Ollama.Endpoint, cfg.Ollama.TimeoutSeconds).WithNumPredict(cfg.Ollama.NumPredict)
 	ctx := context.Background()
 
 	if err := ollamaClient.Ping(ctx); err != nil {
