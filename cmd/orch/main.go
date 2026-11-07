@@ -39,6 +39,34 @@ func main() {
 	}
 }
 
+// minWriteTimeout is the floor for http.Server.WriteTimeout.
+const minWriteTimeout = 180 * time.Second
+
+// writeTimeoutMargin is added on top of the Ollama timeout so the handler can
+// finish writing its response after the slowest permitted inference.
+const writeTimeoutMargin = 30 * time.Second
+
+// writeTimeout derives http.Server.WriteTimeout from ollama.timeout_seconds so
+// it always exceeds the Ollama client timeout. A shorter WriteTimeout would
+// drop the client connection (r.Context() is not cancelled by it) while the
+// inference keeps occupying Ollama.
+func writeTimeout(ollamaTimeoutSec int) time.Duration {
+	d := time.Duration(ollamaTimeoutSec)*time.Second + writeTimeoutMargin
+	if d < minWriteTimeout {
+		return minWriteTimeout
+	}
+	return d
+}
+
+// buildHandler wires the Ollama / Qdrant pingers into GET /v1/health and builds
+// the HTTP handler. Without them the health handler skips every ping and
+// always reports ok.
+func buildHandler(cfg server.Config, o, q server.Pinger) http.Handler {
+	cfg.Health = server.HealthConfig{Ollama: o, Qdrant: q}
+	h, _ := server.Build(cfg)
+	return h
+}
+
 func run(cfg *config.Config) error {
 	ctx := context.Background()
 
@@ -148,7 +176,7 @@ func run(cfg *config.Config) error {
 	// --- HTTP Server ---
 	// The returned *PendingStore is the same pending we already own (since
 	// we pass it in via cfg.Pending above); its Stop() is deferred already.
-	handler, _ := server.Build(server.Config{
+	handler := buildHandler(server.Config{
 		Router:       r,
 		Extractor:    extractor,
 		ScoreUpdater: updater,
@@ -157,14 +185,14 @@ func run(cfg *config.Config) error {
 		BearerToken:  bearerToken,
 		ExtractWG:    &extractWG,
 		LifecycleCtx: lifecycleCtx,
-	})
+	}, ollamaClient, qdrantClient)
 
 	addr := server.Addr(cfg.Server.Host, cfg.Server.Port)
 	httpServer := &http.Server{
 		Addr:         addr,
 		Handler:      handler,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 180 * time.Second,
+		WriteTimeout: writeTimeout(cfg.Ollama.TimeoutSeconds),
 	}
 
 	log.Printf("reasoning-mesh listening on %s", addr)
