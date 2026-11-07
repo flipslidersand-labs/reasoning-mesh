@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/flipslidersand/reasoning-mesh/internal/config"
 	"github.com/flipslidersand/reasoning-mesh/internal/eval"
 )
 
@@ -66,5 +67,45 @@ func TestSplitComma_MatchesStdlib(t *testing.T) {
 		if got := splitComma(in); !reflect.DeepEqual(got, want) {
 			t.Errorf("splitComma(%q) = %#v, stdlib = %#v", in, got, want)
 		}
+	}
+}
+
+func TestResolveModels(t *testing.T) {
+	full := &config.Config{}
+	full.Ollama.Models = map[string]string{"router": "r:1b", "knowledge": "k:9b"}
+	noKeys := &config.Config{}
+	noKeys.Ollama.Models = map[string]string{}
+
+	cases := []struct {
+		name string
+		cfg  *config.Config
+		flag string
+		want []string
+	}{
+		{"flag overrides config", full, "x,y", []string{"x", "y"}},
+		{"flag single", full, "x", []string{"x"}},
+		{"flag trims spaces", full, " x , y ", []string{"x", "y"}},
+		{"flag drops empty elements", full, "a,,b", []string{"a", "b"}},
+		{"flag drops whitespace-only and trailing", full, ",a, ,b,", []string{"a", "b"}},
+		{"flag only separators yields nil", full, ",", nil},
+		{"empty flag uses router and knowledge", full, "", []string{"r:1b", "k:9b"}},
+		// Current behavior (not endorsed): missing keys leak empty-string models.
+		{"empty flag with missing keys yields empty models", noKeys, "", []string{"", ""}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := resolveModels(tc.cfg, tc.flag)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("resolveModels(%q) = %#v, want %#v", tc.flag, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveModels_NilModelsMap(t *testing.T) {
+	cfg := &config.Config{} // nil map: reads return "" without panic
+	got := resolveModels(cfg, "")
+	if want := []string{"", ""}; !reflect.DeepEqual(got, want) {
+		t.Errorf("resolveModels = %#v, want %#v", got, want)
 	}
 }
