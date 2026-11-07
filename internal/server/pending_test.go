@@ -215,3 +215,46 @@ func TestPendingStore_ConcurrentAddGetSweep(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// fixedNow is the injected clock used by the expiresAt boundary tests.
+var fixedNow = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+
+// expiresAt == now is still valid (expiry is strictly "now after expiresAt").
+func TestPendingStore_Get_ExpiresAtEqualsNow_IsValid(t *testing.T) {
+	s := server.NewPendingStore()
+	defer s.Stop()
+	s.SetNow(func() time.Time { return fixedNow })
+	id := s.Put([]string{"k"})
+	s.SetExpiry(id, fixedNow)
+	if got := s.Get(id); len(got) != 1 || got[0] != "k" {
+		t.Errorf("Get at expiresAt==now = %v, want [k]", got)
+	}
+}
+
+func TestPendingStore_Get_OneNsPastExpiry_IsExpired(t *testing.T) {
+	s := server.NewPendingStore()
+	defer s.Stop()
+	s.SetNow(func() time.Time { return fixedNow })
+	id := s.Put([]string{"k"})
+	s.SetExpiry(id, fixedNow.Add(-time.Nanosecond))
+	if got := s.Get(id); got != nil {
+		t.Errorf("Get 1ns past expiry = %v, want nil", got)
+	}
+}
+
+func TestPendingStore_Sweep_ExpiresAtEqualsNow_Kept(t *testing.T) {
+	s := server.NewPendingStore()
+	defer s.Stop()
+	s.SetNow(func() time.Time { return fixedNow })
+	keep := s.Put([]string{"keep"})
+	drop := s.Put([]string{"drop"})
+	s.SetExpiry(keep, fixedNow)
+	s.SetExpiry(drop, fixedNow.Add(-time.Nanosecond))
+	s.Sweep()
+	if s.Len() != 1 {
+		t.Fatalf("Len after Sweep = %d, want 1", s.Len())
+	}
+	if got := s.Get(keep); len(got) != 1 {
+		t.Errorf("entry with expiresAt==now was swept: %v", got)
+	}
+}

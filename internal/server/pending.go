@@ -35,6 +35,8 @@ type PendingStore struct {
 	maxCap  int
 	stopCh  chan struct{}
 	once    sync.Once
+	// now returns the current time; nil means time.Now. Tests inject a fixed clock.
+	now func() time.Time
 }
 
 // NewPendingStore creates a PendingStore and starts a background goroutine that
@@ -89,7 +91,7 @@ func (s *PendingStore) Restore(requestID string, knowledgeIDs []string) {
 // insertLocked stores an entry, evicting the oldest one when at cap.
 // s.mu must be held.
 func (s *PendingStore) insertLocked(id string, knowledgeIDs []string) {
-	now := time.Now()
+	now := s.clock()
 	if _, exists := s.entries[id]; !exists && len(s.entries) >= s.maxCap {
 		oldest := ""
 		var oldestTime time.Time
@@ -116,7 +118,7 @@ func (s *PendingStore) Get(requestID string) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.entries[requestID]
-	if !ok || time.Now().After(e.expiresAt) {
+	if !ok || s.clock().After(e.expiresAt) {
 		delete(s.entries, requestID)
 		return nil
 	}
@@ -127,14 +129,22 @@ func (s *PendingStore) Get(requestID string) []string {
 // Sweep removes all expired entries. The background goroutine calls this
 // automatically; it may also be called directly in tests.
 func (s *PendingStore) Sweep() {
-	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	now := s.clock()
 	for id, e := range s.entries {
 		if now.After(e.expiresAt) {
 			delete(s.entries, id)
 		}
 	}
+}
+
+// clock returns the current time. s.mu must be held.
+func (s *PendingStore) clock() time.Time {
+	if s.now != nil {
+		return s.now()
+	}
+	return time.Now()
 }
 
 func newRequestID() string {

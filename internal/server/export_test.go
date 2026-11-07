@@ -35,3 +35,10 @@ func (s *PendingStore) SetExpiry(id string, t time.Time) bool {
 	s.entries[id] = e
 	return true
 }
+
+// SetNow injects a clock used for expiry decisions and TTL stamping.
+func (s *PendingStore) SetNow(f func() time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.now = f
+}
