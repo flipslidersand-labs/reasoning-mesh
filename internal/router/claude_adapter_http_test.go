@@ -69,3 +69,15 @@ func TestClaudeAdapter_MaxTokensWarns(t *testing.T) {
 		t.Fatalf("no warning logged: %q", buf.String())
 	}
 }
+
+func TestClaudeAdapter_TruncatedFlag(t *testing.T) {
+	a := newTestClaude(t, 200, `{"model":"m","stop_reason":"max_tokens","content":[{"type":"text","text":"partial"}]}`)
+	r, _ := a.Generate(context.Background(), "p")
+	if !r.Truncated {
+		t.Fatal("want Truncated=true for max_tokens")
+	}
+	a = newTestClaude(t, 200, `{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}]}`)
+	if r, _ := a.Generate(context.Background(), "p"); r.Truncated {
+		t.Fatal("want Truncated=false for end_turn")
+	}
+}

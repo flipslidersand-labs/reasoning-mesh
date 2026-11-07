@@ -32,6 +32,7 @@ type Result struct {
 	Accuracy         float64   `json:"accuracy"`       // 0.0-1.0, -1 = not scored
 	Answer           string    `json:"answer"`
 	Error            string    `json:"error,omitempty"`
+	Truncated        bool      `json:"truncated,omitempty"` // generation hit the output cap
 }
 
 // SummaryKey groups results by model+condition for aggregate stats.
@@ -49,12 +50,17 @@ type Summary struct {
 	AvgRecall    float64   `json:"avg_recall"`
 	AvgAccuracy  float64   `json:"avg_accuracy"` // -1 if not scored
 	ErrorCount   int       `json:"error_count"`
+	// TruncatedCount is the number of results cut off at the output cap; rate = TruncatedCount/Count.
+	TruncatedCount int `json:"truncated_count,omitempty"`
 }
 
 type RunSummary struct {
 	RunAt     time.Time `json:"run_at"`
 	Results   []Result  `json:"results"`
 	Summaries []Summary `json:"summaries"`
+	// RAGDegraded is true when RAG conditions ran on NoopRetriever because
+	// Qdrant was unreachable (-allow-noop-rag); cosine/score then equal no-rag.
+	RAGDegraded bool `json:"rag_degraded,omitempty"`
 }
 
 // keywordRecall scores each required_keywords entry as a hit if any of its
@@ -90,6 +96,7 @@ func ComputeSummaries(results []Result) []Summary {
 		accuracy  float64
 		accCount  int
 		errors    int
+		truncated int
 		count     int
 		succCount int // count excluding errors
 	}
@@ -101,6 +108,9 @@ func ComputeSummaries(results []Result) []Summary {
 		}
 		a := m[k]
 		a.count++
+		if r.Truncated {
+			a.truncated++
+		}
 		if r.Error != "" {
 			a.errors++
 			continue // exclude error results from recall/accuracy aggregation
@@ -126,14 +136,15 @@ func ComputeSummaries(results []Result) []Summary {
 			succF = 1 // avoid div-by-zero; all metrics will be 0 anyway
 		}
 		summaries = append(summaries, Summary{
-			Model:        k.Model,
-			Condition:    k.Condition,
-			Count:        a.count,
-			AvgLatencyMS: float64(a.latency) / succF,
-			TotalTokens:  a.tokens,
-			AvgRecall:    a.recall / succF,
-			AvgAccuracy:  avgAcc,
-			ErrorCount:   a.errors,
+			Model:          k.Model,
+			Condition:      k.Condition,
+			Count:          a.count,
+			AvgLatencyMS:   float64(a.latency) / succF,
+			TotalTokens:    a.tokens,
+			AvgRecall:      a.recall / succF,
+			AvgAccuracy:    avgAcc,
+			ErrorCount:     a.errors,
+			TruncatedCount: a.truncated,
 		})
 	}
 	return summaries
@@ -183,8 +194,13 @@ func PrintSummary(summaries []Summary) {
 }
 
 func SaveJSON(results []Result, path string) error {
+	return SaveRunJSON(results, path, false)
+}
+
+// SaveRunJSON is SaveJSON that also records whether RAG was degraded to Noop.
+func SaveRunJSON(results []Result, path string, ragDegraded bool) error {
 	summaries := ComputeSummaries(results)
-	summary := RunSummary{RunAt: time.Now(), Results: results, Summaries: summaries}
+	summary := RunSummary{RunAt: time.Now(), Results: results, Summaries: summaries, RAGDegraded: ragDegraded}
 	data, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
 		return err

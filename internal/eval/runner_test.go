@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -502,5 +503,36 @@ func TestRunner_SelfJudging(t *testing.T) {
 	}
 	if NewRunnerWithRetrieverMap(c, RetrieverMap{}, []string{"a", "b"}, nil).SelfJudging() {
 		t.Error("judge a with targets a,b still has an independent target; only the sole-model case is the accident")
+	}
+}
+
+func TestRunner_TruncatedPropagatesToResultAndSummary(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"response": "0.5", "done": true, "done_reason": "length",
+			"prompt_eval_count": 1, "eval_count": 2,
+		})
+	}))
+	t.Cleanup(srv.Close)
+	runner := NewRunnerWithRetrieverMap(ollama.New(srv.URL, 10), RetrieverMap{}, []string{"m"}, []Condition{CondNoRAG}).
+		WithCooldown(0)
+	results := runner.Run(context.Background(), []Case{makeCase("c1", nil)})
+	if len(results) != 1 || !results[0].Truncated {
+		t.Fatalf("want Truncated result, got %+v", results)
+	}
+	s := ComputeSummaries(append(results, Result{Model: "m", Condition: CondNoRAG, Accuracy: -1}))
+	if len(s) != 1 || s[0].TruncatedCount != 1 || s[0].Count != 2 {
+		t.Fatalf("summary = %+v", s)
+	}
+}
+
+func TestResult_TruncatedOmittedWhenFalse(t *testing.T) {
+	b, _ := json.Marshal(Result{})
+	if strings.Contains(string(b), "truncated") {
+		t.Fatalf("truncated must be omitted: %s", b)
+	}
+	b, _ = json.Marshal(Summary{})
+	if strings.Contains(string(b), "truncated") {
+		t.Fatalf("truncated_count must be omitted: %s", b)
 	}
 }
