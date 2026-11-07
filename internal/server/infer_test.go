@@ -234,3 +234,25 @@ func TestInfer_OK_NotDegraded(t *testing.T) {
 		t.Errorf("degraded must be omitted on success: %s", rec.Body.String())
 	}
 }
+
+type truncAdapter struct{ truncated bool }
+
+func (a truncAdapter) Name() string { return "trunc" }
+func (a truncAdapter) Generate(context.Context, string) (router.Response, error) {
+	return router.Response{Text: "cut", Model: "trunc", Truncated: a.truncated}, nil
+}
+
+func TestInfer_TruncatedFlag(t *testing.T) {
+	for _, trunc := range []bool{true, false} {
+		r := router.New(router.Config{Default: truncAdapter{truncated: trunc}})
+		srv, pending := server.Build(server.Config{Router: r})
+		t.Cleanup(pending.Stop)
+		body, _ := json.Marshal(server.InferRequest{Prompt: "x", TaskType: "debugging"})
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/infer", bytes.NewReader(body)))
+		has := strings.Contains(rec.Body.String(), `"truncated":true`)
+		if has != trunc || (!trunc && strings.Contains(rec.Body.String(), "truncated")) {
+			t.Errorf("trunc=%v body=%s", trunc, rec.Body.String())
+		}
+	}
+}
