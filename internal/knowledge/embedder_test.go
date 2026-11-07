@@ -3,6 +3,7 @@ package knowledge_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -94,6 +95,16 @@ func TestEmbedder_Embed_Errors(t *testing.T) {
 			t.Errorf("err = %v", err)
 		}
 	})
+	t.Run("401 with valid JSON body", func(t *testing.T) {
+		srv := embedStub(t, 401, `{"vectors":[[1]]}`, nil)
+		vecs, err := knowledge.NewEmbedderWithAuth(srv.URL, "bad", "c").Embed(context.Background(), []string{"a"})
+		if err == nil || !strings.Contains(err.Error(), "status 401") {
+			t.Errorf("err = %v", err)
+		}
+		if vecs != nil {
+			t.Errorf("vecs = %v, want nil", vecs)
+		}
+	})
 	t.Run("invalid JSON", func(t *testing.T) {
 		srv := embedStub(t, 200, `{not json`, nil)
 		if _, err := knowledge.NewEmbedder(srv.URL).Embed(context.Background(), []string{"a"}); err == nil {
@@ -104,8 +115,8 @@ func TestEmbedder_Embed_Errors(t *testing.T) {
 		srv := embedStub(t, 200, `{"vectors":[[1]]}`, nil)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if _, err := knowledge.NewEmbedder(srv.URL).Embed(ctx, []string{"a"}); err == nil {
-			t.Error("expected context error")
+		if _, err := knowledge.NewEmbedder(srv.URL).Embed(ctx, []string{"a"}); !errors.Is(err, context.Canceled) {
+			t.Errorf("err = %v, want context.Canceled", err)
 		}
 	})
 	t.Run("bad endpoint URL", func(t *testing.T) {
@@ -148,8 +159,8 @@ func TestEmbedder_EmbedOne(t *testing.T) {
 		t.Cleanup(func() { close(release) }) // runs before srv.Close (LIFO)
 		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 		defer cancel()
-		if _, err := knowledge.NewEmbedder(srv.URL).EmbedOne(ctx, "a"); err == nil {
-			t.Error("expected deadline error")
+		if _, err := knowledge.NewEmbedder(srv.URL).EmbedOne(ctx, "a"); !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("err = %v, want context.DeadlineExceeded", err)
 		}
 	})
 }
