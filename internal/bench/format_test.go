@@ -87,3 +87,19 @@ func TestFmtLatency(t *testing.T) {
 		}
 	}
 }
+
+func TestFprintDeltas_WarnsOnRAGDegradedRun(t *testing.T) {
+	a, b := runWith(1, 0.5), runWith(2, 0.5)
+	b.RAGDegraded = true
+	b.File = "bad.json"
+	var buf bytes.Buffer
+	FprintDeltas(&buf, []RunEntry{a, b}, ComputeDeltas([]RunEntry{a, b}))
+	if !strings.Contains(buf.String(), "rag_degraded") || !strings.Contains(buf.String(), "bad.json") {
+		t.Errorf("missing degraded warning:\n%s", buf.String())
+	}
+	buf.Reset()
+	FprintDeltas(&buf, []RunEntry{a, runWith(3, 0.5)}, nil)
+	if strings.Contains(buf.String(), "rag_degraded") {
+		t.Error("unexpected warning")
+	}
+}

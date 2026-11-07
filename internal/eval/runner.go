@@ -208,6 +208,7 @@ func (r *Runner) runOne(ctx context.Context, c Case, model string, cond Conditio
 	}
 
 	res.Answer = genResp.Response
+	res.Truncated = genResp.Truncated()
 	if genResp.PromptEvalCount > 0 {
 		res.PromptTokens = genResp.PromptEvalCount
 	} else {
