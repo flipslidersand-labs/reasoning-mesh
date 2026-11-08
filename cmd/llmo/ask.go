@@ -22,6 +22,8 @@ type askResponse struct {
 	Answer string `json:"answer"`
 	Model  string `json:"model"`
 	Error  string `json:"error,omitempty"`
+	// Truncated is true when the answer hit the model output cap.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 func runAsk(cfg *config.Config, args []string) error {
@@ -67,6 +69,9 @@ func runAsk(cfg *config.Config, args []string) error {
 	}
 	if ar.Error != "" {
 		return fmt.Errorf("ask: %s", ar.Error)
+	}
+	if ar.Truncated {
+		fmt.Fprintln(os.Stderr, "warning: answer was truncated at the model output cap and may be incomplete")
 	}
 	fmt.Println(ar.Answer)
 	return nil
