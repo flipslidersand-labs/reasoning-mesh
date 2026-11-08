@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,9 +25,35 @@ func (p *togglePinger) Ping(context.Context) error {
 	return nil
 }
 
-type fakeClock struct{ t time.Time }
+type fakeClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
 
-func (c *fakeClock) now() time.Time { return c.t }
+func (c *fakeClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+func (c *fakeClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
+}
+
+// slowPingerClock simulates a ping that runs until its timeout by advancing
+// the injected clock by healthPingTimeout, then fails like a timed-out ping.
+type slowPingerClock struct {
+	calls atomic.Int32
+	clk   *fakeClock
+}
+
+func (p *slowPingerClock) Ping(context.Context) error {
+	p.calls.Add(1)
+	p.clk.advance(healthPingTimeout)
+	return errors.New("timeout")
+}
 
 func newCachedHealth(p *togglePinger) (*healthHandler, *fakeClock) {
 	clk := &fakeClock{t: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
@@ -94,5 +121,67 @@ func TestHealthCache_UnhealthyCachedThenRecovers(t *testing.T) {
 	clk.t = clk.t.Add(healthCacheTTL)
 	if rec := getHealth(h); rec.Code != http.StatusOK {
 		t.Fatalf("recovered code = %d, want 200", rec.Code)
+	}
+}
+
+// A ping that takes as long as the TTL must still leave a fresh cache: the TTL
+// counts from when the result arrived, not from when the ping started.
+func TestHealthCache_SlowPingResultIsFreshAfterwards(t *testing.T) {
+	clk := &fakeClock{t: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	p := &slowPingerClock{clk: clk}
+	h := &healthHandler{cfg: HealthConfig{Ollama: p, Qdrant: okPinger{}}, now: clk.now}
+	getHealth(h)
+	rec := getHealth(h)
+	if n := p.calls.Load(); n != 1 {
+		t.Fatalf("pings = %d, want 1", n)
+	}
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("code = %d, want 503", rec.Code)
+	}
+}
+
+// Concurrent requests share one round of pings and see the same result.
+func TestHealthCache_ConcurrentRequestsShareOnePing(t *testing.T) {
+	clk := &fakeClock{t: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	p := &slowPingerClock{clk: clk}
+	h := &healthHandler{cfg: HealthConfig{Ollama: p, Qdrant: okPinger{}}, now: clk.now}
+
+	const n = 8
+	start := make(chan struct{})
+	recs := make([]*httptest.ResponseRecorder, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			recs[i] = getHealth(h)
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	if got := p.calls.Load(); got != 1 {
+		t.Fatalf("pings = %d, want 1", got)
+	}
+	for i, rec := range recs {
+		if rec.Code != recs[0].Code || rec.Body.String() != recs[0].Body.String() {
+			t.Fatalf("response %d differs: %d %q vs %d %q", i, rec.Code, rec.Body, recs[0].Code, recs[0].Body)
+		}
+	}
+}
+
+// A canceled first request must not poison the cache with a failure.
+func TestHealthCache_CanceledRequestDoesNotCacheFailure(t *testing.T) {
+	h := &healthHandler{cfg: HealthConfig{Ollama: okPinger{}, Qdrant: okPinger{}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/health", nil).WithContext(ctx))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code = %d, want 200", rec.Code)
+	}
+	if rec := getHealth(h); rec.Code != http.StatusOK {
+		t.Fatalf("follow-up code = %d, want 200", rec.Code)
 	}
 }

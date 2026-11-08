@@ -45,6 +45,3 @@ func (s *PendingStore) SetNow(f func() time.Time) {
 
 // PendingTTL exposes the production TTL to tests.
 const PendingTTL = pendingTTL
-
-// HealthCacheTTL exposes the production health cache TTL to tests.
-const HealthCacheTTL = healthCacheTTL

@@ -65,7 +65,7 @@ func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // result returns the cached status and body, refreshing them when the cache is
-// empty or at least healthCacheTTL old (age == TTL counts as expired).
+// empty or at least healthCacheTTL old (age == TTL counts as expired; age is measured from when the pings finished).
 func (h *healthHandler) result(parent context.Context) (int, []byte) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -74,8 +74,7 @@ func (h *healthHandler) result(parent context.Context) (int, []byte) {
 	if clock == nil {
 		clock = time.Now
 	}
-	start := clock()
-	if h.cachedOK && start.Sub(h.cachedAt) < healthCacheTTL {
+	if h.cachedOK && clock().Sub(h.cachedAt) < healthCacheTTL {
 		return h.cachedCode, h.cachedBody
 	}
 
@@ -121,6 +120,8 @@ func (h *healthHandler) result(parent context.Context) (int, []byte) {
 	if err := json.NewEncoder(&buf).Encode(resp); err != nil {
 		log.Printf("health: encode response: %v", err)
 	}
-	h.cachedAt, h.cachedOK, h.cachedCode, h.cachedBody = start, true, code, buf.Bytes()
+	// Stamp after the pings finish: the TTL is the age of the result, so a
+	// slow ping cannot leave the cache already expired when it is written.
+	h.cachedAt, h.cachedOK, h.cachedCode, h.cachedBody = clock(), true, code, buf.Bytes()
 	return code, h.cachedBody
 }
