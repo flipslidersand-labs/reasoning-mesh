@@ -79,6 +79,40 @@ func TestValidate_ZeroTimeout(t *testing.T) {
 	}
 }
 
+func TestValidate_NegativeTimeout(t *testing.T) {
+	cfg := validConfig()
+	cfg.Ollama.TimeoutSeconds = -1
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "ollama.timeout_seconds") {
+		t.Errorf("expected ollama.timeout_seconds error, got %v", err)
+	}
+}
+
+func TestValidate_TimeoutUpperBound(t *testing.T) {
+	cases := []struct {
+		name string
+		set  func(c *Config, v int)
+	}{
+		{"ollama.timeout_seconds", func(c *Config, v int) { c.Ollama.TimeoutSeconds = v }},
+		{"qdrant.timeout_seconds", func(c *Config, v int) { c.Qdrant.TimeoutSeconds = v }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validConfig()
+			tc.set(cfg, MaxTimeoutSeconds)
+			if err := cfg.Validate(); err != nil {
+				t.Errorf("upper bound itself should be accepted: %v", err)
+			}
+			cfg = validConfig()
+			tc.set(cfg, MaxTimeoutSeconds+1)
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tc.name) {
+				t.Errorf("expected %s error, got %v", tc.name, err)
+			}
+		})
+	}
+}
+
 func TestValidate_MissingRouterModel(t *testing.T) {
 	cfg := validConfig()
 	cfg.Ollama.Models["router"] = ""
