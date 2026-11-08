@@ -151,7 +151,7 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 	span.SetAttributes(attribute.Int("upserted_count", upserted))
 	span.SetAttributes(attribute.Int("skipped_count", skipped))
 	if skipped > 0 && upserted == 0 {
-		log.Printf("extractor: WARNING all %d chunks were skipped (commit=%s); check structurize/embed errors above", skipped, commitSHA)
+		log.Printf("extractor: WARNING all %d chunks were skipped (commit=%s); check embed/lookup/upsert errors above", skipped, commitSHA)
 	} else if skipped > 0 {
 		log.Printf("extractor: %d/%d chunks skipped (commit=%s)", skipped, len(chunks), commitSHA)
 	}

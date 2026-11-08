@@ -100,6 +100,21 @@ func TestStructurize_InvalidJSON_FallsBackToHint(t *testing.T) {
 	}
 }
 
+func TestStructurize_MalformedJSONBlock_FallsBackToHint(t *testing.T) {
+	// Has both "{" and "}" so the block is extracted, but json.Unmarshal fails.
+	srv := ollamaStub(t, `{"task_type": debugging, "language": }`)
+	s := knowledge.NewStructurizer(ollama.New(srv.URL, 10), "stub")
+
+	chunk := knowledge.Chunk{Content: "broken json code", HintTaskType: eval.TaskArchitecture}
+	got := s.Structurize(context.Background(), chunk)
+	if got.TaskType != eval.TaskArchitecture {
+		t.Errorf("malformed JSON should fall back to hint, got %q", got.TaskType)
+	}
+	if got.Content != chunk.Content {
+		t.Errorf("content should be preserved, got %q", got.Content)
+	}
+}
+
 func TestStructurize_OllamaError_FallsBackToHint(t *testing.T) {
 	srv := ollamaError(t)
 	s := knowledge.NewStructurizer(ollama.New(srv.URL, 10), "stub")
