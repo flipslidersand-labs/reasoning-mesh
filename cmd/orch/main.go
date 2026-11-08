@@ -42,16 +42,13 @@ func main() {
 // minWriteTimeout is the floor for http.Server.WriteTimeout.
 const minWriteTimeout = 180 * time.Second
 
-// defaultQdrantTimeout is used when qdrant.timeout_seconds is unset.
-const defaultQdrantTimeout = 30 * time.Second
-
 // qdrantTimeoutFor returns the Qdrant client timeout for qdrant.timeout_seconds
-// (unset or non-positive falls back to defaultQdrantTimeout).
+// (unset or non-positive falls back to qdrant.DefaultTimeout).
 func qdrantTimeoutFor(timeoutSec int) time.Duration {
 	if timeoutSec > 0 {
 		return time.Duration(timeoutSec) * time.Second
 	}
-	return defaultQdrantTimeout
+	return qdrant.DefaultTimeout
 }
 
 // writeTimeout derives http.Server.WriteTimeout from the actual timeouts of
@@ -59,6 +56,11 @@ func qdrantTimeoutFor(timeoutSec int) time.Duration {
 // exceeds the Ollama client timeout, because a shorter WriteTimeout would drop
 // the client connection (r.Context() is not cancelled by it) while the
 // inference keeps occupying Ollama. The 180s floor is kept.
+//
+// Ollama retries (up to 3 attempts on EOF / connection reset) are not included.
+// A timeout is not retried, so the normal worst case is T + embed + qdrant. If
+// Ollama dies late in a long generation and the retry runs past WriteTimeout,
+// the connection is dropped; this is accepted.
 func writeTimeout(ollamaTimeoutSec int, embedTimeout, qdrantTimeout time.Duration) time.Duration {
 	d := time.Duration(ollamaTimeoutSec)*time.Second + embedTimeout + qdrantTimeout
 	if d < minWriteTimeout {
@@ -69,6 +71,9 @@ func writeTimeout(ollamaTimeoutSec int, embedTimeout, qdrantTimeout time.Duratio
 
 // shutdownTimeout is the drain time for http.Server.Shutdown: as long as the
 // longest request may run (writeTimeout), so in-flight requests can finish.
+// Like writeTimeout, it excludes Ollama retries (EOF / connection reset, up to
+// 3 attempts); timeouts are not retried, so the normal worst case is
+// T + embed + qdrant. A retry that outlasts it is cut off, which is accepted.
 func shutdownTimeout(ollamaTimeoutSec int, embedTimeout, qdrantTimeout time.Duration) time.Duration {
 	return writeTimeout(ollamaTimeoutSec, embedTimeout, qdrantTimeout)
 }
@@ -220,6 +225,9 @@ func run(cfg *config.Config) error {
 	}()
 
 	<-quit
+	// Restore default signal handling: a second SIGINT/SIGTERM terminates the
+	// process immediately instead of waiting for the (long) drain below.
+	signal.Stop(quit)
 	log.Println("shutting down...")
 
 	// Cancel the lifecycle context first so in-flight extraction goroutines
