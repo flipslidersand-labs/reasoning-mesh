@@ -33,14 +33,17 @@ func TestClaudeAdapter_OK(t *testing.T) {
 
 func TestClaudeAdapter_EmptyContentIsError(t *testing.T) {
 	a := newTestClaude(t, 200, `{"model":"m","stop_reason":"refusal","content":[]}`)
-	if _, err := a.Generate(context.Background(), "p"); err == nil {
-		t.Fatal("want error for empty text")
+	if r, err := a.Generate(context.Background(), "p"); err == nil || r != (Response{}) {
+		t.Fatalf("want error and zero Response, got %+v, %v", r, err)
 	}
 }
 
 func TestClaudeAdapter_NonOKIncludesBody(t *testing.T) {
 	a := newTestClaude(t, 429, `{"error":{"type":"rate_limit_error","message":"slow down"}}`)
-	_, err := a.Generate(context.Background(), "p")
+	r, err := a.Generate(context.Background(), "p")
+	if r != (Response{}) {
+		t.Fatalf("want zero Response, got %+v", r)
+	}
 	if err == nil || !strings.Contains(err.Error(), "429") || !strings.Contains(err.Error(), "rate_limit_error") {
 		t.Fatalf("got %v", err)
 	}
@@ -59,8 +62,9 @@ func TestClaudeAdapter_NonOKBodyTruncated(t *testing.T) {
 
 func TestClaudeAdapter_MaxTokensWarns(t *testing.T) {
 	var buf bytes.Buffer
+	prev := log.Writer()
 	log.SetOutput(&buf)
-	defer log.SetOutput(log.Writer())
+	defer log.SetOutput(prev)
 	a := newTestClaude(t, 200, `{"model":"m","stop_reason":"max_tokens","content":[{"type":"text","text":"partial"}]}`)
 	r, err := a.Generate(context.Background(), "p")
 	if err != nil || r.Text != "partial" {
@@ -77,9 +81,11 @@ func TestClaudeAdapter_TruncatedFlag(t *testing.T) {
 	if !r.Truncated {
 		t.Fatal("want Truncated=true for max_tokens")
 	}
-	a = newTestClaude(t, 200, `{"model":"m","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}]}`)
-	if r, _ := a.Generate(context.Background(), "p"); r.Truncated {
-		t.Fatal("want Truncated=false for end_turn")
+	for _, reason := range []string{"end_turn", "stop_sequence"} {
+		a = newTestClaude(t, 200, `{"model":"m","stop_reason":"`+reason+`","content":[{"type":"text","text":"ok"}]}`)
+		if r, _ := a.Generate(context.Background(), "p"); r.Truncated {
+			t.Fatalf("want Truncated=false for %s", reason)
+		}
 	}
 }
 
@@ -102,10 +108,10 @@ func TestClaudeAdapter_RequestHeadersAndBody(t *testing.T) {
 	if _, err := a.Generate(context.Background(), "hello"); err != nil {
 		t.Fatal(err)
 	}
-	if gotKey != "dummy-key" || gotVer != claudeAPIVersion || gotCT != "application/json" || gotMethod != http.MethodPost {
+	if gotKey != "dummy-key" || gotVer != "2023-06-01" || gotCT != "application/json" || gotMethod != http.MethodPost {
 		t.Fatalf("headers: key=%q ver=%q ct=%q method=%q", gotKey, gotVer, gotCT, gotMethod)
 	}
-	if gotModel != "test-model" || gotMax != claudeMaxTokens || gotPrompt != "user:hello" {
+	if gotModel != "test-model" || gotMax != 4096 || gotPrompt != "user:hello" {
 		t.Fatalf("body: model=%q max=%d prompt=%q", gotModel, gotMax, gotPrompt)
 	}
 }
@@ -124,7 +130,10 @@ func TestClaudeAdapter_MultiBlockSkipsNonText(t *testing.T) {
 
 func TestClaudeAdapter_OnlyNonTextBlocksIsError(t *testing.T) {
 	a := newTestClaude(t, 200, `{"model":"m","stop_reason":"tool_use","content":[{"type":"tool_use","text":"x"}]}`)
-	_, err := a.Generate(context.Background(), "p")
+	r, err := a.Generate(context.Background(), "p")
+	if r != (Response{}) {
+		t.Fatalf("want zero Response, got %+v", r)
+	}
 	if err == nil || !strings.Contains(err.Error(), "tool_use") {
 		t.Fatalf("got %v", err)
 	}
@@ -132,7 +141,10 @@ func TestClaudeAdapter_OnlyNonTextBlocksIsError(t *testing.T) {
 
 func TestClaudeAdapter_DecodeError(t *testing.T) {
 	a := newTestClaude(t, 200, `{not json`)
-	_, err := a.Generate(context.Background(), "p")
+	r, err := a.Generate(context.Background(), "p")
+	if r != (Response{}) {
+		t.Fatalf("want zero Response, got %+v", r)
+	}
 	if err == nil || !strings.Contains(err.Error(), "claude decode") {
 		t.Fatalf("got %v", err)
 	}
@@ -141,7 +153,10 @@ func TestClaudeAdapter_DecodeError(t *testing.T) {
 func TestClaudeAdapter_TransportError(t *testing.T) {
 	a := newTestClaude(t, 200, `{}`)
 	a.url = "http://127.0.0.1:1" // closed port
-	_, err := a.Generate(context.Background(), "p")
+	r, err := a.Generate(context.Background(), "p")
+	if r != (Response{}) {
+		t.Fatalf("want zero Response, got %+v", r)
+	}
 	if err == nil || !strings.Contains(err.Error(), "claude http") {
 		t.Fatalf("got %v", err)
 	}
