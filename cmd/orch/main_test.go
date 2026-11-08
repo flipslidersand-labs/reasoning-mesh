@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flipslidersand/reasoning-mesh/internal/config"
 	"github.com/flipslidersand/reasoning-mesh/internal/server"
 )
 
@@ -52,5 +53,9 @@ func TestWriteTimeout_ExceedsOllamaTimeout(t *testing.T) {
 	}
 	if got := writeTimeout(1); got < 180*time.Second {
 		t.Errorf("WriteTimeout %v must not drop below the 180s floor", got)
+	}
+	want := time.Duration(config.MaxTimeoutSeconds+30) * time.Second
+	if got := writeTimeout(config.MaxTimeoutSeconds); got != want {
+		t.Errorf("writeTimeout(MaxTimeoutSeconds) = %v, want %v (no overflow at the cap)", got, want)
 	}
 }
