@@ -1,6 +1,6 @@
 ollama:
   endpoint: "http://YOUR_HOST:11434"
-  timeout_seconds: 300
+  timeout_seconds: 300  # 上限 86400(24時間)
   # num_predict: 2048  # generation token cap (default 2048)
   models:
     router: "qwen2.5:7b"
@@ -19,7 +19,7 @@ qdrant:
   upsert_batch_size: 32
   # timeout_seconds: HTTP client timeout for Qdrant requests.
   # Increase when upserting large batches on a slow network.
-  # Default: 30
+  # Default: 30. 上限 86400(24時間)
   timeout_seconds: 30
 
 embedder:

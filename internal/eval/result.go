@@ -50,7 +50,8 @@ type Summary struct {
 	AvgRecall    float64   `json:"avg_recall"`
 	AvgAccuracy  float64   `json:"avg_accuracy"` // -1 if not scored
 	ErrorCount   int       `json:"error_count"`
-	// TruncatedCount is the number of results cut off at the output cap; rate = TruncatedCount/Count.
+	// TruncatedCount is the number of results cut off at the output cap; rate = TruncatedCount/(Count-ErrorCount),
+	// since Truncated is only set on the success path.
 	TruncatedCount int `json:"truncated_count,omitempty"`
 }
 
@@ -108,14 +109,14 @@ func ComputeSummaries(results []Result) []Summary {
 		}
 		a := m[k]
 		a.count++
-		if r.Truncated {
-			a.truncated++
-		}
 		if r.Error != "" {
 			a.errors++
 			continue // exclude error results from recall/accuracy aggregation
 		}
 		a.succCount++
+		if r.Truncated {
+			a.truncated++
+		}
 		a.latency += r.LatencyMS
 		a.tokens += r.PromptTokens + r.CompletionTokens
 		a.recall += r.KeywordRecall
@@ -178,17 +179,17 @@ func PrintTable(results []Result) {
 func PrintSummary(summaries []Summary) {
 	fmt.Println("\n=== Summary (per model × condition) ===")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "MODEL\tCONDITION\tCOUNT\tAVG_LATENCY\tTOTAL_TOKENS\tAVG_RECALL\tAVG_ACCURACY\tERRORS")
-	fmt.Fprintln(w, "-----\t---------\t-----\t-----------\t------------\t----------\t------------\t------")
+	fmt.Fprintln(w, "MODEL\tCONDITION\tCOUNT\tAVG_LATENCY\tTOTAL_TOKENS\tAVG_RECALL\tAVG_ACCURACY\tERRORS\tTRUNCATED")
+	fmt.Fprintln(w, "-----\t---------\t-----\t-----------\t------------\t----------\t------------\t------\t---------")
 	for _, s := range summaries {
 		accStr := "n/a"
 		if s.AvgAccuracy >= 0 {
 			accStr = fmt.Sprintf("%.2f", s.AvgAccuracy)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%d\t%.0fms\t%d\t%.2f\t%s\t%d\n",
+		fmt.Fprintf(w, "%s\t%s\t%d\t%.0fms\t%d\t%.2f\t%s\t%d\t%d\n",
 			s.Model, s.Condition, s.Count,
 			s.AvgLatencyMS, s.TotalTokens,
-			s.AvgRecall, accStr, s.ErrorCount)
+			s.AvgRecall, accStr, s.ErrorCount, s.TruncatedCount)
 	}
 	w.Flush()
 }
