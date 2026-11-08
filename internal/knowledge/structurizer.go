@@ -38,8 +38,9 @@ var knownTaskTypes = map[string]eval.TaskType{
 }
 
 // Structurize extracts task_type, language, framework, and tags from chunk content.
-// If the LLM call fails, it falls back to hint values from the Chunk.
-func (s *Structurizer) Structurize(ctx context.Context, chunk Chunk) (StructuredChunk, error) {
+// If the LLM call fails or its output is unparseable, it falls back to hint
+// values from the Chunk. It never fails, so it returns no error.
+func (s *Structurizer) Structurize(ctx context.Context, chunk Chunk) StructuredChunk {
 	prompt := fmt.Sprintf(`以下のコードチャンクから、技術メタデータを抽出してください。
 JSONのみで返答してください（説明文なし）。
 
@@ -60,7 +61,7 @@ JSONのみで返答してください（説明文なし）。
 		return StructuredChunk{
 			Content:  chunk.Content,
 			TaskType: chunk.HintTaskType,
-		}, nil
+		}
 	}
 
 	return parseStructurizerOutput(raw, chunk)
@@ -73,18 +74,18 @@ type structurizerJSON struct {
 	Tags      []string `json:"tags"`
 }
 
-func parseStructurizerOutput(raw string, chunk Chunk) (StructuredChunk, error) {
+func parseStructurizerOutput(raw string, chunk Chunk) StructuredChunk {
 	// Extract JSON block from potentially noisy LLM output
 	start := strings.Index(raw, "{")
 	end := strings.LastIndex(raw, "}")
 	if start == -1 || end == -1 || end <= start {
-		return StructuredChunk{Content: chunk.Content, TaskType: chunk.HintTaskType}, nil
+		return StructuredChunk{Content: chunk.Content, TaskType: chunk.HintTaskType}
 	}
 	jsonStr := raw[start : end+1]
 
 	var parsed structurizerJSON
 	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
-		return StructuredChunk{Content: chunk.Content, TaskType: chunk.HintTaskType}, nil
+		return StructuredChunk{Content: chunk.Content, TaskType: chunk.HintTaskType}
 	}
 
 	taskType := chunk.HintTaskType
@@ -98,5 +99,5 @@ func parseStructurizerOutput(raw string, chunk Chunk) (StructuredChunk, error) {
 		Language:  parsed.Language,
 		Framework: parsed.Framework,
 		Tags:      parsed.Tags,
-	}, nil
+	}
 }
