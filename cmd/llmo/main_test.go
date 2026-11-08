@@ -75,27 +75,36 @@ func TestResolveModels(t *testing.T) {
 	full.Ollama.Models = map[string]string{"router": "r:1b", "knowledge": "k:9b"}
 	noKeys := &config.Config{}
 	noKeys.Ollama.Models = map[string]string{}
+	onlyRouter := &config.Config{}
+	onlyRouter.Ollama.Models = map[string]string{"router": "r:1b"}
+	blankValues := &config.Config{}
+	blankValues.Ollama.Models = map[string]string{"router": " ", "knowledge": ""}
 
 	cases := []struct {
-		name string
-		cfg  *config.Config
-		flag string
-		want []string
+		name    string
+		cfg     *config.Config
+		flag    string
+		want    []string
+		wantErr bool
 	}{
-		{"flag overrides config", full, "x,y", []string{"x", "y"}},
-		{"flag single", full, "x", []string{"x"}},
-		{"flag trims spaces", full, " x , y ", []string{"x", "y"}},
-		{"flag drops empty elements", full, "a,,b", []string{"a", "b"}},
-		{"flag drops whitespace-only and trailing", full, ",a, ,b,", []string{"a", "b"}},
-		{"flag only separators yields nil", full, ",", nil},
-		{"empty flag uses router and knowledge", full, "", []string{"r:1b", "k:9b"}},
-		// Missing keys leak empty-string models.
-		// 現状の挙動を固定しているだけで望ましい挙動ではない。修正時は期待値を変える(#308)
-		{"empty flag with missing keys yields empty models", noKeys, "", []string{"", ""}},
+		{"flag overrides config", full, "x,y", []string{"x", "y"}, false},
+		{"flag single", full, "x", []string{"x"}, false},
+		{"flag trims spaces", full, " x , y ", []string{"x", "y"}, false},
+		{"flag drops empty elements", full, "a,,b", []string{"a", "b"}, false},
+		{"flag drops whitespace-only and trailing", full, ",a, ,b,", []string{"a", "b"}, false},
+		{"flag only separators is an error", full, ",", nil, true},
+		{"flag whitespace only is an error", full, " ", nil, true},
+		{"empty flag uses router and knowledge", full, "", []string{"r:1b", "k:9b"}, false},
+		{"empty flag drops one missing key", onlyRouter, "", []string{"r:1b"}, false},
+		{"empty flag with missing keys is an error", noKeys, "", nil, true},
+		{"empty flag with blank values is an error", blankValues, "", nil, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := resolveModels(tc.cfg, tc.flag)
+			got, err := resolveModels(tc.cfg, tc.flag)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("resolveModels(%q) err = %v, wantErr %v", tc.flag, err, tc.wantErr)
+			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("resolveModels(%q) = %#v, want %#v", tc.flag, got, tc.want)
 			}
@@ -105,9 +114,31 @@ func TestResolveModels(t *testing.T) {
 
 func TestResolveModels_NilModelsMap(t *testing.T) {
 	cfg := &config.Config{} // nil map: reads return "" without panic
-	got := resolveModels(cfg, "")
-	// 現状の挙動を固定しているだけで望ましい挙動ではない。修正時は期待値を変える(#308)
-	if want := []string{"", ""}; !reflect.DeepEqual(got, want) {
-		t.Errorf("resolveModels = %#v, want %#v", got, want)
+	got, err := resolveModels(cfg, "")
+	if err == nil {
+		t.Fatalf("resolveModels = %#v, want error", got)
+	}
+	if !strings.Contains(err.Error(), "ollama.models") {
+		t.Errorf("error %q should mention ollama.models", err)
+	}
+	if strings.Contains(err.Error(), "-models") {
+		t.Errorf("config-derived error %q should not suggest -models", err)
+	}
+}
+
+func TestResolveModels_FlagErrorMentionsFlag(t *testing.T) {
+	full := &config.Config{}
+	full.Ollama.Models = map[string]string{"router": "r:1b", "knowledge": "k:9b"}
+	for _, flag := range []string{",", " "} {
+		_, err := resolveModels(full, flag)
+		if err == nil {
+			t.Fatalf("resolveModels(%q) want error", flag)
+		}
+		if !strings.Contains(err.Error(), "-models") {
+			t.Errorf("flag-derived error %q should mention -models", err)
+		}
+		if strings.Contains(err.Error(), "ollama.models") {
+			t.Errorf("flag-derived error %q should not point at ollama.models", err)
+		}
 	}
 }
