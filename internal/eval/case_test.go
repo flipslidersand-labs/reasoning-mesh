@@ -1,8 +1,10 @@
 package eval
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,8 +71,7 @@ func TestLoadCases_SkipsSchemaAndNonYAML(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "README.txt"), "not a case")
 	// A non-YAML file that would fail to parse must be ignored, not error.
 	writeFile(t, filepath.Join(dir, "notes.md"), ": : : [")
-	// Current behaviour: only the ".yaml" suffix is loaded; ".yml" is ignored.
-	// Whether this is intentional needs confirmation (see issue #269).
+	// Only the ".yaml" suffix is loaded; ".yml" is ignored (with a warning, #304).
 	writeFile(t, filepath.Join(dir, "b.yml"), caseYAML("case-b-yml"))
 	// ".yaml" only in the middle of the name: not a suffix match, must be ignored
 	// (invalid content proves it is never parsed).
@@ -88,6 +89,66 @@ func TestLoadCases_SkipsSchemaAndNonYAML(t *testing.T) {
 	}
 	if len(cases) != 2 || !got["case-a"] || !got["case-x"] {
 		t.Fatalf("cases = %+v, want only case-a and case-x", cases)
+	}
+}
+
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	prev := log.Writer()
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+	return &buf
+}
+
+func TestLoadCases_WarnsOnYML(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "a.yaml"), caseYAML("case-a"))
+	b := filepath.Join(dir, "b.yml")
+	writeFile(t, b, caseYAML("case-b"))
+	// schema.yml is also warned about, regardless of name.
+	s := filepath.Join(dir, "sub", "schema.yml")
+	writeFile(t, s, caseYAML("schema"))
+
+	buf := captureLog(t)
+	cases, err := LoadCases(dir)
+	if err != nil {
+		t.Fatalf("LoadCases: %v", err)
+	}
+	if len(cases) != 1 || cases[0].ID != "case-a" {
+		t.Fatalf("cases = %+v, want only case-a", cases)
+	}
+	out := buf.String()
+	for _, p := range []string{b, s} {
+		if !strings.Contains(out, p) {
+			t.Errorf("log %q does not mention %q", out, p)
+		}
+	}
+	if !strings.Contains(out, ".yaml") {
+		t.Errorf("log %q should explain only .yaml is loaded", out)
+	}
+	if strings.Contains(out, "a.yaml") {
+		t.Errorf("log %q must not mention a.yaml", out)
+	}
+}
+
+func TestLoadCases_NoWarningWithoutYML(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "a.yaml"), caseYAML("case-a"))
+	writeFile(t, filepath.Join(dir, "schema.yaml"), caseYAML("schema"))
+	writeFile(t, filepath.Join(dir, "notes.yaml.bak"), "x")
+	writeFile(t, filepath.Join(dir, "README.txt"), "x")
+	// A directory named *.yml is not a file and must not warn.
+	if err := os.MkdirAll(filepath.Join(dir, "d.yml"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := captureLog(t)
+	if _, err := LoadCases(dir); err != nil {
+		t.Fatalf("LoadCases: %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("unexpected log output: %q", buf.String())
 	}
 }
 
