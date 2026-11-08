@@ -41,10 +41,7 @@ func TestStructurize_ValidJSON(t *testing.T) {
 	s := knowledge.NewStructurizer(ollama.New(srv.URL, 10), "stub")
 
 	chunk := knowledge.Chunk{Content: "if err != nil { return err }", HintTaskType: eval.TaskImplementation}
-	got, err := s.Structurize(context.Background(), chunk)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	got := s.Structurize(context.Background(), chunk)
 	if got.TaskType != eval.TaskDebugging {
 		t.Errorf("task_type = %q, want debugging", got.TaskType)
 	}
@@ -65,7 +62,7 @@ func TestStructurize_UnknownTaskType_FallsBackToHint(t *testing.T) {
 	s := knowledge.NewStructurizer(ollama.New(srv.URL, 10), "stub")
 
 	chunk := knowledge.Chunk{Content: "fn main() {}", HintTaskType: eval.TaskArchitecture}
-	got, _ := s.Structurize(context.Background(), chunk)
+	got := s.Structurize(context.Background(), chunk)
 	if got.TaskType != eval.TaskArchitecture {
 		t.Errorf("unknown task_type should fall back to hint, got %q", got.TaskType)
 	}
@@ -80,7 +77,7 @@ func TestStructurize_NoisyLLMOutput(t *testing.T) {
 	s := knowledge.NewStructurizer(ollama.New(srv.URL, 10), "stub")
 
 	chunk := knowledge.Chunk{Content: "describe('auth', () => {})", HintTaskType: eval.TaskImplementation}
-	got, _ := s.Structurize(context.Background(), chunk)
+	got := s.Structurize(context.Background(), chunk)
 	if got.TaskType != eval.TaskTesting {
 		t.Errorf("noisy output: task_type = %q, want testing", got.TaskType)
 	}
@@ -94,9 +91,24 @@ func TestStructurize_InvalidJSON_FallsBackToHint(t *testing.T) {
 	s := knowledge.NewStructurizer(ollama.New(srv.URL, 10), "stub")
 
 	chunk := knowledge.Chunk{Content: "some code", HintTaskType: eval.TaskDebugging}
-	got, _ := s.Structurize(context.Background(), chunk)
+	got := s.Structurize(context.Background(), chunk)
 	if got.TaskType != eval.TaskDebugging {
 		t.Errorf("invalid JSON should fall back to hint, got %q", got.TaskType)
+	}
+	if got.Content != chunk.Content {
+		t.Errorf("content should be preserved, got %q", got.Content)
+	}
+}
+
+func TestStructurize_MalformedJSONBlock_FallsBackToHint(t *testing.T) {
+	// Has both "{" and "}" so the block is extracted, but json.Unmarshal fails.
+	srv := ollamaStub(t, `{"task_type": debugging, "language": }`)
+	s := knowledge.NewStructurizer(ollama.New(srv.URL, 10), "stub")
+
+	chunk := knowledge.Chunk{Content: "broken json code", HintTaskType: eval.TaskArchitecture}
+	got := s.Structurize(context.Background(), chunk)
+	if got.TaskType != eval.TaskArchitecture {
+		t.Errorf("malformed JSON should fall back to hint, got %q", got.TaskType)
 	}
 	if got.Content != chunk.Content {
 		t.Errorf("content should be preserved, got %q", got.Content)
@@ -108,9 +120,12 @@ func TestStructurize_OllamaError_FallsBackToHint(t *testing.T) {
 	s := knowledge.NewStructurizer(ollama.New(srv.URL, 10), "stub")
 
 	chunk := knowledge.Chunk{Content: "panic here", HintTaskType: eval.TaskDebugging}
-	got, _ := s.Structurize(context.Background(), chunk)
+	got := s.Structurize(context.Background(), chunk)
 	if got.TaskType != eval.TaskDebugging {
 		t.Errorf("ollama error should fall back to hint, got %q", got.TaskType)
+	}
+	if got.Content != chunk.Content {
+		t.Errorf("content should be preserved, got %q", got.Content)
 	}
 }
 
@@ -129,7 +144,7 @@ func TestStructurize_AllTaskTypes(t *testing.T) {
 		srv := ollamaStub(t, llmResp)
 		s := knowledge.NewStructurizer(ollama.New(srv.URL, 10), "stub")
 		chunk := knowledge.Chunk{Content: "code", HintTaskType: eval.TaskImplementation}
-		got, _ := s.Structurize(context.Background(), chunk)
+		got := s.Structurize(context.Background(), chunk)
 		if got.TaskType != tc.wantType {
 			t.Errorf("%s: task_type = %q, want %q", tc.llmType, got.TaskType, tc.wantType)
 		}
