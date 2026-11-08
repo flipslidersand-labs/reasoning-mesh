@@ -21,8 +21,11 @@ type Client struct {
 // an oversized or malicious Qdrant response cannot exhaust memory.
 const maxSearchResponseBytes = 16 << 20 // 16 MiB
 
+// DefaultTimeout is the HTTP client timeout used when none is configured.
+const DefaultTimeout = 30 * time.Second
+
 func New(endpoint string) *Client {
-	return NewWithTimeout(endpoint, 30*time.Second)
+	return NewWithTimeout(endpoint, DefaultTimeout)
 }
 
 // NewWithTimeout creates a Client with a configurable HTTP timeout.

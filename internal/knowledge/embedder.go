@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+// EmbedTimeout is the HTTP client timeout for one embedding request. Callers
+// (e.g. cmd/orch) derive server timeouts from it.
+const EmbedTimeout = 30 * time.Second
+
 // Embedder calls the e5 embedding service.
 type Embedder struct {
 	endpoint   string
@@ -26,7 +30,7 @@ func NewEmbedderWithAuth(endpoint, apiKey, collection string) *Embedder {
 		endpoint:   endpoint,
 		apiKey:     apiKey,
 		collection: collection,
-		http:       &http.Client{Timeout: 30 * time.Second},
+		http:       &http.Client{Timeout: EmbedTimeout},
 	}
 }
 
