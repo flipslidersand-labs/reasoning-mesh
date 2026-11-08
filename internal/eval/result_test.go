@@ -97,3 +97,44 @@ func TestComputeSummaries_TruncatedExcludesErrorRows(t *testing.T) {
 		t.Fatalf("want TruncatedCount=1 (errors excluded), got %+v", s)
 	}
 }
+
+func TestPrintTable_TruncatedColumn(t *testing.T) {
+	var buf strings.Builder
+	printTable(&buf, []Result{
+		{Model: "mA", Condition: CondNoRAG, CaseID: "c1", Truncated: true, Accuracy: -1},
+		{Model: "mB", Condition: CondNoRAG, CaseID: "c2", Accuracy: -1},
+		{Model: "mC", Condition: CondNoRAG, CaseID: "c3", Error: "boom", Truncated: true, Accuracy: -1},
+	})
+	lines := strings.Split(buf.String(), "\n")
+	var header string
+	rows := map[string]string{}
+	for _, l := range lines {
+		if strings.HasPrefix(l, "MODEL") {
+			header = l
+		}
+		if f := strings.Fields(l); len(f) > 0 && strings.HasPrefix(f[0], "m") && f[0] != "MODEL" {
+			rows[f[0]] = l
+		}
+	}
+	if !strings.Contains(header, "ACCURACY") || !strings.Contains(header, "TRUNC") {
+		t.Fatalf("header lacks TRUNC: %q", header)
+	}
+	col := strings.Index(header, "TRUNC")
+	if col < strings.Index(header, "ACCURACY") || col > strings.Index(header, "ERROR") {
+		t.Errorf("TRUNC must sit between ACCURACY and ERROR: %q", header)
+	}
+	want := map[string]string{"mA": "yes", "mB": "-", "mC": "-"}
+	for m, w := range want {
+		row := rows[m]
+		if len(row) <= col {
+			t.Fatalf("%s row too short: %q", m, row)
+		}
+		got := strings.Fields(row[col:])[0]
+		if got != w {
+			t.Errorf("%s: TRUNC cell = %q, want %q (row %q)", m, got, w, row)
+		}
+	}
+	if !strings.HasSuffix(rows["mC"], "boom") {
+		t.Errorf("error row lost ERROR cell: %q", rows["mC"])
+	}
+}
