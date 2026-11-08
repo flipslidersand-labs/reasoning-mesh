@@ -3,6 +3,7 @@ package eval
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -152,9 +153,13 @@ func ComputeSummaries(results []Result) []Summary {
 }
 
 func PrintTable(results []Result) {
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "MODEL\tCONDITION\tCASE_ID\tLATENCY\tTOKENS\tRECALL\tACCURACY\tERROR")
-	fmt.Fprintln(w, "-----\t---------\t-------\t-------\t------\t------\t--------\t-----")
+	printTable(os.Stdout, results)
+}
+
+func printTable(out io.Writer, results []Result) {
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "MODEL\tCONDITION\tCASE_ID\tLATENCY\tTOKENS\tRECALL\tACCURACY\tTRUNC\tERROR")
+	fmt.Fprintln(w, "-----\t---------\t-------\t-------\t------\t------\t--------\t-----\t-----")
 	for _, r := range results {
 		errStr := ""
 		if r.Error != "" {
@@ -168,10 +173,15 @@ func PrintTable(results []Result) {
 		if r.Accuracy >= 0 {
 			accStr = fmt.Sprintf("%.2f", r.Accuracy)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%dms\t%d\t%.2f\t%s\t%s\n",
+		// Error rows are not counted as truncated (same as ComputeSummaries).
+		truncStr := "-"
+		if r.Truncated && r.Error == "" {
+			truncStr = "yes"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%dms\t%d\t%.2f\t%s\t%s\t%s\n",
 			r.Model, r.Condition, r.CaseID,
 			r.LatencyMS, r.PromptTokens+r.CompletionTokens,
-			r.KeywordRecall, accStr, errStr)
+			r.KeywordRecall, accStr, truncStr, errStr)
 	}
 	w.Flush()
 }
