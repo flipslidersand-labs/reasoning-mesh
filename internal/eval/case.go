@@ -2,6 +2,7 @@ package eval
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,7 +44,15 @@ func LoadCases(dir string) ([]Case, error) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || !strings.HasSuffix(path, ".yaml") {
+		if d.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(path, ".yml") {
+			// %q keeps odd file names (newlines, control chars) on one log line.
+			log.Printf("eval: skipping %q: only .yaml files are loaded, .yml is ignored", path)
+			return nil
+		}
+		if !strings.HasSuffix(path, ".yaml") {
 			return nil
 		}
 		if filepath.Base(path) == "schema.yaml" {
