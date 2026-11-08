@@ -119,6 +119,16 @@ func TestPrintTable_TruncatedColumn(t *testing.T) {
 	if !strings.Contains(header, "ACCURACY") || !strings.Contains(header, "TRUNC") {
 		t.Fatalf("header lacks TRUNC: %q", header)
 	}
+	var sep string
+	for _, l := range lines {
+		if strings.HasPrefix(l, "-----") {
+			sep = l
+			break
+		}
+	}
+	if len(strings.Fields(sep)) != len(strings.Fields(header)) {
+		t.Errorf("separator columns = %d, header columns = %d: %q", len(strings.Fields(sep)), len(strings.Fields(header)), sep)
+	}
 	col := strings.Index(header, "TRUNC")
 	if col < strings.Index(header, "ACCURACY") || col > strings.Index(header, "ERROR") {
 		t.Errorf("TRUNC must sit between ACCURACY and ERROR: %q", header)
