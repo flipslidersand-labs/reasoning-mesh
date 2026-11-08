@@ -81,7 +81,7 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 		}
 		batch := chunks[batchStart:batchEnd]
 
-		// Structurize all chunks in this batch first, skipping failures.
+		// Structurize all chunks in this batch first (Structurize never fails; it falls back to hints).
 		type structuredItem struct {
 			sc StructuredChunk
 			id string
@@ -89,17 +89,9 @@ func (e *Extractor) Run(ctx context.Context, commitSHA, diff, ciLog string) erro
 		items := make([]structuredItem, 0, len(batch))
 		texts := make([]string, 0, len(batch))
 		for _, chunk := range batch {
-			sc, err := e.structurizer.Structurize(ctx, chunk)
-			if err != nil {
-				log.Printf("extractor: structurize error: %v", err)
-				skipped++
-				continue
-			}
+			sc := e.structurizer.Structurize(ctx, chunk)
 			items = append(items, structuredItem{sc: sc, id: deterministicID(sc.TaskType, sc.Content)})
 			texts = append(texts, sc.Content)
-		}
-		if len(items) == 0 {
-			continue
 		}
 
 		// Embed all texts in this batch in one request.
