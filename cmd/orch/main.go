@@ -42,22 +42,35 @@ func main() {
 // minWriteTimeout is the floor for http.Server.WriteTimeout.
 const minWriteTimeout = 180 * time.Second
 
-// writeTimeoutMargin is added on top of the Ollama timeout as headroom for the
-// non-Ollama work in a request (e.g. embedding and Qdrant search in /v1/infer)
-// and for writing the response. It is a fixed allowance, not a bound on those
-// steps.
-const writeTimeoutMargin = 30 * time.Second
+// defaultQdrantTimeout is used when qdrant.timeout_seconds is unset.
+const defaultQdrantTimeout = 30 * time.Second
 
-// writeTimeout derives http.Server.WriteTimeout from ollama.timeout_seconds so
-// it always exceeds the Ollama client timeout. A shorter WriteTimeout would
-// drop the client connection (r.Context() is not cancelled by it) while the
-// inference keeps occupying Ollama.
-func writeTimeout(ollamaTimeoutSec int) time.Duration {
-	d := time.Duration(ollamaTimeoutSec)*time.Second + writeTimeoutMargin
+// qdrantTimeoutFor returns the Qdrant client timeout for qdrant.timeout_seconds
+// (unset or non-positive falls back to defaultQdrantTimeout).
+func qdrantTimeoutFor(timeoutSec int) time.Duration {
+	if timeoutSec > 0 {
+		return time.Duration(timeoutSec) * time.Second
+	}
+	return defaultQdrantTimeout
+}
+
+// writeTimeout derives http.Server.WriteTimeout from the actual timeouts of
+// the steps in /v1/infer: embed + Qdrant search + Ollama. The result always
+// exceeds the Ollama client timeout, because a shorter WriteTimeout would drop
+// the client connection (r.Context() is not cancelled by it) while the
+// inference keeps occupying Ollama. The 180s floor is kept.
+func writeTimeout(ollamaTimeoutSec int, embedTimeout, qdrantTimeout time.Duration) time.Duration {
+	d := time.Duration(ollamaTimeoutSec)*time.Second + embedTimeout + qdrantTimeout
 	if d < minWriteTimeout {
 		return minWriteTimeout
 	}
 	return d
+}
+
+// shutdownTimeout is the drain time for http.Server.Shutdown: as long as the
+// longest request may run (writeTimeout), so in-flight requests can finish.
+func shutdownTimeout(ollamaTimeoutSec int, embedTimeout, qdrantTimeout time.Duration) time.Duration {
+	return writeTimeout(ollamaTimeoutSec, embedTimeout, qdrantTimeout)
 }
 
 // buildHandler wires the Ollama / Qdrant pingers into GET /v1/health and builds
@@ -93,10 +106,7 @@ func run(cfg *config.Config) error {
 	log.Printf("ollama OK (%s)", cfg.Ollama.Endpoint)
 
 	// --- Qdrant ---
-	qdrantTimeout := 30 * time.Second
-	if cfg.Qdrant.TimeoutSeconds > 0 {
-		qdrantTimeout = time.Duration(cfg.Qdrant.TimeoutSeconds) * time.Second
-	}
+	qdrantTimeout := qdrantTimeoutFor(cfg.Qdrant.TimeoutSeconds)
 	qdrantClient := qdrant.NewWithTimeout(cfg.Qdrant.Endpoint, qdrantTimeout).WithAPIKey(cfg.Qdrant.APIKey)
 	if err := qdrantClient.Ping(ctx); err != nil {
 		return fmt.Errorf("qdrant unreachable: %w", err)
@@ -194,7 +204,7 @@ func run(cfg *config.Config) error {
 		Addr:         addr,
 		Handler:      handler,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: writeTimeout(cfg.Ollama.TimeoutSeconds),
+		WriteTimeout: writeTimeout(cfg.Ollama.TimeoutSeconds, knowledge.EmbedTimeout, qdrantTimeout),
 	}
 
 	log.Printf("reasoning-mesh listening on %s", addr)
@@ -216,7 +226,8 @@ func run(cfg *config.Config) error {
 	// receive the shutdown signal before we drain new HTTP requests.
 	lifecycleCancel()
 
-	shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutCtx, cancel := context.WithTimeout(context.Background(),
+		shutdownTimeout(cfg.Ollama.TimeoutSeconds, knowledge.EmbedTimeout, qdrantTimeout))
 	defer cancel()
 	if err := httpServer.Shutdown(shutCtx); err != nil {
 		return err
