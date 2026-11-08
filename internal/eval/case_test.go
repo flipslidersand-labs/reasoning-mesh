@@ -72,16 +72,21 @@ func TestLoadCases_SkipsSchemaAndNonYAML(t *testing.T) {
 	// A non-YAML file that would fail to parse must be ignored, not error.
 	writeFile(t, filepath.Join(dir, "notes.md"), ": : : [")
 	// Only the ".yaml" suffix is loaded; ".yml" is ignored (with a warning, #304).
-	writeFile(t, filepath.Join(dir, "b.yml"), caseYAML("case-b-yml"))
+	bYML := filepath.Join(dir, "b.yml")
+	writeFile(t, bYML, caseYAML("case-b-yml"))
 	// ".yaml" only in the middle of the name: not a suffix match, must be ignored
 	// (invalid content proves it is never parsed).
 	writeFile(t, filepath.Join(dir, "notes.yaml.bak"), "id: [unterminated")
 	// Ends with "schema.yaml" but the base name differs, so it is a normal case.
 	writeFile(t, filepath.Join(dir, "xschema.yaml"), caseYAML("case-x"))
 
+	buf := captureLog(t)
 	cases, err := LoadCases(dir)
 	if err != nil {
 		t.Fatalf("LoadCases: %v", err)
+	}
+	if !strings.Contains(buf.String(), bYML) {
+		t.Errorf("log %q does not mention %q", buf.String(), bYML)
 	}
 	got := map[string]bool{}
 	for _, c := range cases {
