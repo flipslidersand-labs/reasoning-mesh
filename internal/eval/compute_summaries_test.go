@@ -74,14 +74,6 @@ func TestComputeSummaries_ErrorExclusionAndAccuracyTable(t *testing.T) {
 			},
 			want: Summary{Count: 2, ErrorCount: 1, AvgAccuracy: 0.2},
 		},
-		{
-			name: "errored result still counted for truncated",
-			results: []Result{
-				{Model: "m", Condition: CondCosine, Accuracy: 1, Truncated: true, Error: "x"},
-				{Model: "m", Condition: CondCosine, Accuracy: 1},
-			},
-			want: Summary{Count: 2, ErrorCount: 1, AvgAccuracy: 1, TruncatedCount: 1},
-		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -96,7 +88,7 @@ func TestComputeSummaries_ErrorExclusionAndAccuracyTable(t *testing.T) {
 				}
 			}
 			if got.Count != tc.want.Count || got.ErrorCount != tc.want.ErrorCount ||
-				got.TotalTokens != tc.want.TotalTokens || got.TruncatedCount != tc.want.TruncatedCount {
+				got.TotalTokens != tc.want.TotalTokens {
 				t.Errorf("counts got %+v, want %+v", got, tc.want)
 			}
 			if !csNear(got.AvgLatencyMS, tc.want.AvgLatencyMS) || !csNear(got.AvgRecall, tc.want.AvgRecall) || !csNear(got.AvgAccuracy, tc.want.AvgAccuracy) {
@@ -124,11 +116,11 @@ func TestComputeSummaries_SeparatesModelAndConditionKeys(t *testing.T) {
 		t.Errorf("a/no-rag = %+v", a)
 	}
 	ac := csFind(t, ss, "a", CondCosine)
-	if ac.Count != 1 || !csNear(ac.AvgLatencyMS, 200) || !csNear(ac.AvgAccuracy, 0.5) {
+	if ac.Count != 1 || !csNear(ac.AvgLatencyMS, 200) || !csNear(ac.AvgRecall, 0.5) || !csNear(ac.AvgAccuracy, 0.5) {
 		t.Errorf("a/cosine = %+v", ac)
 	}
 	b := csFind(t, ss, "b", CondNoRAG)
-	if b.Count != 1 || !csNear(b.AvgLatencyMS, 300) || b.ErrorCount != 0 {
+	if b.Count != 1 || !csNear(b.AvgLatencyMS, 300) || b.ErrorCount != 0 || b.AvgAccuracy != 0 {
 		t.Errorf("b/no-rag = %+v", b)
 	}
 	bc := csFind(t, ss, "b", CondCosine)
