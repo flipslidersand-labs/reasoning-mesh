@@ -34,10 +34,19 @@ type ingestResponse struct {
 	Error     string `json:"error,omitempty"`
 }
 
+// ingestDefaultToken returns the bearer token for /v1/trigger: LLMO_TRIGGER_TOKEN,
+// falling back to LLMO_ORCH_TOKEN for backward compatibility.
+func ingestDefaultToken() string {
+	if t := os.Getenv("LLMO_TRIGGER_TOKEN"); t != "" {
+		return t
+	}
+	return os.Getenv("LLMO_ORCH_TOKEN")
+}
+
 func runIngest(cfg *config.Config, args []string) error {
 	fs := flag.NewFlagSet("ingest", flag.ExitOnError)
 	serverURL := fs.String("server", defaultServerURL(cfg), "llmo server base URL")
-	token := fs.String("token", os.Getenv("LLMO_ORCH_TOKEN"), "bearer token")
+	token := fs.String("token", ingestDefaultToken(), "bearer token (default: $LLMO_TRIGGER_TOKEN, falling back to $LLMO_ORCH_TOKEN)")
 	commitRef := fs.String("commit", "", "git commit ref to ingest (e.g. HEAD)")
 	filePath := fs.String("file", "", "markdown/text file to ingest as diff content")
 	_ = fs.Parse(args)

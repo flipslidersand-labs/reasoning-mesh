@@ -128,6 +128,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// that finds the semaphore full is rejected rather than queued so callers
 	// (CI) get immediate backpressure instead of unbounded goroutine growth.
 	if h.extractor != nil {
+		// lifecycle ctx が取り消し済み(ドレイン中)なら Run は全スキップして nil を返す。
+		// 202 を返すと CI が取り込み済みと誤認するため 503 で再送を促す(#313)。
+		if h.ctx != nil && h.ctx.Err() != nil {
+			span.SetStatus(codes.Error, "server shutting down")
+			http.Error(w, "server shutting down, retry later", http.StatusServiceUnavailable)
+			return
+		}
 		select {
 		case h.sem <- struct{}{}:
 		default:

@@ -209,8 +209,8 @@ func TestExtractor_LookupFailureSkipsBatch(t *testing.T) {
 	fq := &fakeQdrant{getFail: true}
 	ex := newExtractorFixture(t, fq)
 
-	if err := ex.Run(context.Background(), "deadbeef", sampleDiff, ""); err != nil {
-		t.Fatalf("Run: %v", err)
+	if err := ex.Run(context.Background(), "deadbeef", sampleDiff, ""); err == nil {
+		t.Fatal("Run must return an error when every chunk was skipped")
 	}
 	if len(fq.upserts) != 0 {
 		t.Errorf("upserted %d points despite lookup failure", len(fq.upserts))
