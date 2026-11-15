@@ -12,17 +12,17 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 2  # need HEAD~1 for diff
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84 # v6
         with:
           version: v1.64.8  # 固定(.golangci.yml は v1 形式。latest は v2 になり壊れる。CONTRIBUTING.md 参照)
           install-mode: goinstall
@@ -37,7 +37,7 @@ jobs:
 
       - name: Upload test log
         if: ${{ always() && github.event_name == 'push' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: test-log
           path: /tmp/test.log
@@ -48,12 +48,12 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ success() && github.event_name == 'push' && vars.LLMO_TRIGGER_URL != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 2
 
       - name: Download test log
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: test-log
           path: /tmp
@@ -73,12 +73,17 @@ jobs:
           echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
 
       - name: POST /v1/trigger
+        env:
+          # run: 内で ${{ }} を直接展開しない(vars は Actions ログにマスクされず出る)。#314
+          TRIGGER_URL: ${{ vars.LLMO_TRIGGER_URL }}
+          TRIGGER_TOKEN: ${{ secrets.LLMO_TRIGGER_TOKEN }}
+          COMMIT_SHA: ${{ steps.payload.outputs.sha }}
         run: |
-          curl -sf -X POST "${{ vars.LLMO_TRIGGER_URL }}/v1/trigger" \
+          curl -sf -X POST "${TRIGGER_URL}/v1/trigger" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.LLMO_TRIGGER_TOKEN }}" \
+            -H "Authorization: Bearer ${TRIGGER_TOKEN}" \
             --data @/tmp/trigger_payload.json \
             --max-time 10 \
-          && echo "trigger accepted for ${{ steps.payload.outputs.sha }}" \
+          && echo "trigger accepted for ${COMMIT_SHA}" \
           || echo "trigger failed (non-fatal)"
         continue-on-error: true
