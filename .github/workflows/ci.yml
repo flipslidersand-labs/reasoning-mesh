@@ -9,7 +9,7 @@ on:
 # runner は qa-workflows 側で vars.GATE_RUNNER (org: linux-general) → ubuntu-latest を自動選択する
 jobs:
   go-test:
-    uses: flipslidersand-labs/qa-workflows/.github/workflows/go-test.yml@main
+    uses: flipslidersand-labs/qa-workflows/.github/workflows/go-test.yml@ea9ddf743bd492a13ceb4aa7c1c54cc33e49f72d # qa-workflows main(固定。#314)
     permissions:
       contents: read
       pull-requests: write
