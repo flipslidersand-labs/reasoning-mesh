@@ -60,8 +60,28 @@ func TestInfer_OK_NoRAG(t *testing.T) {
 	if resp.Model != "stub-model" {
 		t.Errorf("want model stub-model, got %q", resp.Model)
 	}
-	if resp.RequestID == "" {
-		t.Error("expected non-empty request_id")
+	// ナレッジが 0 件のときは feedback で参照できる ID が無いので request_id は空(#313)。
+	if resp.RequestID != "" {
+		t.Errorf("want empty request_id when no knowledge was used, got %q", resp.RequestID)
+	}
+}
+
+// RAG が有効でも検索結果が 0 件なら pending を消費させないため request_id を返さない(#313)。
+func TestInfer_EmptyRetrieval_NoRequestID(t *testing.T) {
+	srv := buildInferServer(t, &stubRetriever{}, "")
+	body, _ := json.Marshal(server.InferRequest{Prompt: "implement auth middleware", TaskType: "implementation"})
+	req := httptest.NewRequest(http.MethodPost, "/v1/infer", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d — %s", rec.Code, rec.Body.String())
+	}
+	var resp server.InferResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.RequestID != "" {
+		t.Errorf("want empty request_id for 0 retrieved items, got %q", resp.RequestID)
 	}
 }
 

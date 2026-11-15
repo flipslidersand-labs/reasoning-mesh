@@ -126,6 +126,21 @@ func TestHandler_ConcurrencyLimit_Returns429(t *testing.T) {
 	}
 }
 
+// シャットダウンで lifecycle ctx が取り消された後は、extractor があるなら 202 を返さず
+// 503 を返す(取消済み ctx では Run が全スキップするため。#313)。
+func TestHandler_Draining_Returns503(t *testing.T) {
+	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	h := NewHandler(&knowledge.Extractor{}, nil, ctx)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, makeRequest(validPayload, "test-token"))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("want 503, got %d", rec.Code)
+	}
+}
+
 func TestHandler_BodyTooLarge(t *testing.T) {
 	t.Setenv("LLMO_TRIGGER_TOKEN", "test-token")
 	h := NewHandler(nil, nil, nil)
