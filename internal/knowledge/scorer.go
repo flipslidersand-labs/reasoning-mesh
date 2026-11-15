@@ -24,8 +24,29 @@ func DefaultScorerConfig() ScorerConfig {
 // (success + α) / (usage + α + β). It is shared by Score() and
 // ScoreUpdater.apply() so the stored success_rate and the retrieval score
 // never diverge.
+//
+// Invalid inputs are normalized rather than propagated: negative counts are
+// treated as 0 and successCount > usageCount is clamped to usageCount. If the
+// denominator (usage + α + β) is <= 0 (non-positive priors) or the result is
+// negative, 0 is returned (safe side) instead of NaN/Inf/negative.
 func (cfg ScorerConfig) EffectiveSuccess(usageCount, successCount int) float64 {
-	return (float64(successCount) + cfg.Alpha) / (float64(usageCount) + cfg.Alpha + cfg.Beta)
+	if usageCount < 0 {
+		usageCount = 0
+	}
+	if successCount < 0 {
+		successCount = 0
+	}
+	if successCount > usageCount {
+		successCount = usageCount
+	}
+	denom := float64(usageCount) + cfg.Alpha + cfg.Beta
+	if denom <= 0 {
+		return 0
+	}
+	if v := (float64(successCount) + cfg.Alpha) / denom; v > 0 {
+		return v
+	}
+	return 0
 }
 
 // Score computes the final retrieval score for a knowledge item.
@@ -35,6 +56,10 @@ func (cfg ScorerConfig) EffectiveSuccess(usageCount, successCount int) float64 {
 //	freshness = exp(-λ × days_since_last_used)
 func (cfg ScorerConfig) Score(cosineSim float64, usageCount, successCount int, daysSinceLastUsed float64, taskMatch bool) float64 {
 	effectiveSuccess := cfg.EffectiveSuccess(usageCount, successCount)
+	// A future last_used_at (clock skew) gives negative days; clamp so freshness <= 1.
+	if daysSinceLastUsed < 0 {
+		daysSinceLastUsed = 0
+	}
 	freshness := math.Exp(-cfg.FreshnessLambda * daysSinceLastUsed)
 
 	boost := 1.0
