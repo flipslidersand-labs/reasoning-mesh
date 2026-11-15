@@ -303,8 +303,8 @@ func TestExtractorRun_AllEmbedsFail(t *testing.T) {
 	env := newExtRunEnv(t, 2)
 	env.embedFail[1], env.embedFail[2], env.embedFail[3] = true, true, true
 	logs := extRunCaptureLog(t)
-	if err := env.ex.Run(context.Background(), "sha", extRunDiff(5), ""); err != nil {
-		t.Fatalf("Run: %v", err)
+	if err := env.ex.Run(context.Background(), "sha", extRunDiff(5), ""); err == nil {
+		t.Fatal("Run must return an error when all chunks are skipped")
 	}
 	if len(env.puts) != 0 || env.gets != 0 {
 		t.Errorf("no lookup/upsert expected, got get=%d put=%d", env.gets, len(env.puts))
@@ -346,8 +346,8 @@ func TestExtractorRun_ShortAndEmptyVectorsAreSkipped(t *testing.T) {
 func TestExtractorRun_NoVectorsReturnedNoUpsert(t *testing.T) {
 	env := newExtRunEnv(t, 2)
 	env.embedShort[1] = 2 // zero vectors returned for the only batch
-	if err := env.ex.Run(context.Background(), "sha", extRunDiff(2), ""); err != nil {
-		t.Fatalf("Run: %v", err)
+	if err := env.ex.Run(context.Background(), "sha", extRunDiff(2), ""); err == nil {
+		t.Fatal("Run must return an error when no chunk could be stored")
 	}
 	if len(env.puts) != 0 || env.gets != 0 {
 		t.Errorf("no lookup/upsert expected, got get=%d put=%d", env.gets, len(env.puts))
@@ -392,4 +392,26 @@ func TestExtractorRun_CILogChunksAreIncluded(t *testing.T) {
 	}
 	// 1 diff chunk + 1 CI chunk fit in a single batch of 2.
 	extRunAssertSizes(t, "upsert sizes", env.putSizes(), []int{2})
+}
+
+func TestExtractorRun_AllChunksSkippedReturnsError(t *testing.T) {
+	env := newExtRunEnv(t, 2)
+	env.embedFail[1], env.embedFail[2], env.embedFail[3] = true, true, true
+	extRunCaptureLog(t)
+	err := env.ex.Run(context.Background(), "sha", extRunDiff(5), "")
+	if err == nil {
+		t.Fatal("Run must return an error when every chunk was skipped")
+	}
+	if !strings.Contains(err.Error(), "all 5 chunks") {
+		t.Errorf("error = %v, want it to mention all 5 chunks", err)
+	}
+}
+
+func TestExtractorRun_AllUpsertsFailReturnsError(t *testing.T) {
+	env := newExtRunEnv(t, 2)
+	env.putFail[1], env.putFail[2] = true, true
+	extRunCaptureLog(t)
+	if err := env.ex.Run(context.Background(), "sha", extRunDiff(4), ""); err == nil {
+		t.Fatal("Run must return an error when every upsert failed")
+	}
 }
