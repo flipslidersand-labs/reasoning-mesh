@@ -296,3 +296,52 @@ func TestBuildIngestPayload_GitDiffTruncatedTo32KiB(t *testing.T) {
 		t.Errorf("len(diff) = %d, want %d", len(payload.Diff), 32*1024)
 	}
 }
+
+func ingestAuthHeader(t *testing.T, args ...string) string {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "doc*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString("content")
+	f.Close()
+
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"status":"accepted","commit_sha":"abc1234"}`))
+	}))
+	defer srv.Close()
+
+	a := append([]string{"--server", srv.URL, "--file", f.Name()}, args...)
+	captureOutput(func() {
+		if err := runIngest(nil, a); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+	return got
+}
+
+func TestRunIngest_TokenPrecedence(t *testing.T) {
+	tests := []struct {
+		name         string
+		trigger, orc string
+		args         []string
+		want         string
+	}{
+		{"trigger token preferred", "trig", "orch", nil, "Bearer trig"},
+		{"fallback to orch token", "", "orch", nil, "Bearer orch"},
+		{"flag wins", "trig", "orch", []string{"--token", "flag"}, "Bearer flag"},
+		{"none", "", "", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("LLMO_TRIGGER_TOKEN", tt.trigger)
+			t.Setenv("LLMO_ORCH_TOKEN", tt.orc)
+			if got := ingestAuthHeader(t, tt.args...); got != tt.want {
+				t.Errorf("Authorization = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
