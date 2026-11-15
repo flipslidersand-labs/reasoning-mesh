@@ -160,7 +160,12 @@ func (h *inferHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	genSpan.End()
 
 	// Store knowledge IDs so clients can reference them by request_id in feedback.
-	requestID := h.pending.Put(knowledgeIDs)
+	// ナレッジが 0 件なら参照する ID が無いので request_id は発行しない。発行すると
+	// feedback 時に Get が nil を返して 400 になり、エントリだけ消費される(#313)。
+	requestID := ""
+	if len(knowledgeIDs) > 0 {
+		requestID = h.pending.Put(knowledgeIDs)
+	}
 
 	span.SetAttributes(
 		attribute.String("model", resp.Model),
