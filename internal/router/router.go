@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 
 	"github.com/flipslidersand/reasoning-mesh/internal/eval"
 )
@@ -28,7 +29,12 @@ type Config struct {
 
 // New creates a Router from the given config.
 // Any nil adapter in cfg falls back to cfg.Default.
-func New(cfg Config) *Router {
+// It returns an error if cfg.Default is nil, since every fallback would
+// otherwise yield a nil adapter.
+func New(cfg Config) (*Router, error) {
+	if cfg.Default == nil {
+		return nil, errors.New("router: Config.Default must not be nil")
+	}
 	resolve := func(a ModelAdapter) ModelAdapter {
 		if a != nil {
 			return a
@@ -44,7 +50,7 @@ func New(cfg Config) *Router {
 			eval.TaskArchitecture:   resolve(cfg.Architecture),
 			eval.TaskTesting:        resolve(cfg.Testing),
 		},
-	}
+	}, nil
 }
 
 // Select returns the adapter assigned to the given task type.

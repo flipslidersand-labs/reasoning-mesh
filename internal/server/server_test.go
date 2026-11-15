@@ -40,7 +40,7 @@ func (errPinger) Ping(_ context.Context) error { return context.DeadlineExceeded
 func buildTestServer(t *testing.T, token string) http.Handler {
 	t.Helper()
 	stub := &stubAdapter{name: "stub"}
-	r := router.New(router.Config{Default: stub})
+	r := mustRouter(t, router.Config{Default: stub})
 	srv, pending := server.Build(server.Config{
 		Router:      r,
 		Health:      server.HealthConfig{Ollama: okPinger{}, Qdrant: okPinger{}},
@@ -72,7 +72,7 @@ func TestHealth_OK(t *testing.T) {
 
 func TestHealth_Degraded(t *testing.T) {
 	stub := &stubAdapter{name: "stub"}
-	r := router.New(router.Config{Default: stub})
+	r := mustRouter(t, router.Config{Default: stub})
 	srv, pending := server.Build(server.Config{
 		Router: r,
 		Health: server.HealthConfig{Ollama: errPinger{}, Qdrant: okPinger{}},
@@ -183,7 +183,7 @@ func TestRoute_TaskTypeInference(t *testing.T) {
 		{"スキーマを設計して", "arch-adapter"},
 	}
 
-	r := router.New(router.Config{
+	r := mustRouter(t, router.Config{
 		Debugging:      &stubAdapter{name: "debug-adapter"},
 		Testing:        &stubAdapter{name: "test-adapter"},
 		Architecture:   &stubAdapter{name: "arch-adapter"},
@@ -261,4 +261,13 @@ func TestRoute_BodyTooLarge(t *testing.T) {
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("want 413, got %d", rec.Code)
 	}
+}
+
+func mustRouter(t testing.TB, cfg router.Config) *router.Router {
+	t.Helper()
+	r, err := router.New(cfg)
+	if err != nil {
+		t.Fatalf("router.New: %v", err)
+	}
+	return r
 }
