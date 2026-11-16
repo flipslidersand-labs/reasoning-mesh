@@ -93,3 +93,69 @@ func TestScorerConfig_Score_MatchesEffectiveSuccess(t *testing.T) {
 		t.Fatalf("Score = %v, want %v", got, want)
 	}
 }
+
+// Negative days (future last_used_at from clock skew) must not inflate freshness above 1 (#345).
+func TestScorer_Score_NegativeDaysClampedToZero(t *testing.T) {
+	cfg := knowledge.DefaultScorerConfig()
+	base := cfg.Score(1.0, 10, 8, 0, false)
+
+	cases := []struct {
+		name string
+		days float64
+	}{
+		{"minus 30 days", -30},
+		{"minus 1 day", -1},
+		{"huge negative", -1e9},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := cfg.Score(1.0, 10, 8, tc.days, false)
+			if math.Abs(got-base) > 1e-12 {
+				t.Fatalf("Score(days=%v)=%v, want same as days=0 (%v)", tc.days, got, base)
+			}
+		})
+	}
+}
+
+func TestScorer_Score_HugeDaysDecaysToZero(t *testing.T) {
+	cfg := knowledge.DefaultScorerConfig()
+	got := cfg.Score(1.0, 10, 8, 1e9, false)
+	if math.IsNaN(got) || got < 0 || got > 1e-12 {
+		t.Fatalf("Score(huge days)=%v, want ≈0 and not NaN", got)
+	}
+}
+
+// Invalid counts are normalized: negatives -> 0, success > usage -> usage.
+// Denominator <= 0 (only possible with non-positive α+β) returns 0 (safe side).
+func TestScorerConfig_EffectiveSuccess_InvalidInputs(t *testing.T) {
+	cfg := knowledge.DefaultScorerConfig() // α=2, β=2
+	cases := []struct {
+		name        string
+		cfg         knowledge.ScorerConfig
+		usage, succ int
+		want        float64
+	}{
+		{"success > usage clamps to usage", cfg, 5, 100, 7.0 / 9.0},
+		{"negative usage treated as 0", cfg, -5, 0, 0.5},
+		{"negative success treated as 0", cfg, 10, -3, 2.0 / 14.0},
+		{"both negative", cfg, -1, -1, 0.5},
+		{"zero denominator returns 0", knowledge.ScorerConfig{}, 0, 0, 0},
+		{"negative denominator returns 0", knowledge.ScorerConfig{Alpha: -1, Beta: -1}, 0, 0, 0},
+		{"valid input unchanged", cfg, 10, 4, 6.0 / 14.0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.cfg.EffectiveSuccess(tc.usage, tc.succ)
+			if math.IsNaN(got) || math.Abs(got-tc.want) > 1e-9 {
+				t.Fatalf("EffectiveSuccess(%d,%d)=%v, want %v", tc.usage, tc.succ, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestScorer_Score_ZeroConfigNoNaN(t *testing.T) {
+	got := knowledge.ScorerConfig{}.Score(1.0, 0, 0, 0, false)
+	if math.IsNaN(got) || math.IsInf(got, 0) {
+		t.Fatalf("Score with zero config=%v, want finite", got)
+	}
+}

@@ -81,7 +81,7 @@ func ChunkCILog(ciLog string) []Chunk {
 func inferTaskTypeFromPath(diffLine string) eval.TaskType {
 	lower := strings.ToLower(diffLine)
 	switch {
-	case strings.Contains(lower, "test"):
+	case isTestPath(diffPath(lower)):
 		return eval.TaskTesting
 	case strings.Contains(lower, "arch") || strings.Contains(lower, "design"):
 		return eval.TaskArchitecture
@@ -90,6 +90,33 @@ func inferTaskTypeFromPath(diffLine string) eval.TaskType {
 	default:
 		return eval.TaskImplementation
 	}
+}
+
+// diffPath extracts the path from a "diff --git a/X b/Y" line (the b/ side).
+// If the line has no " b/" marker the whole line is returned.
+func diffPath(diffLine string) string {
+	if i := strings.LastIndex(diffLine, " b/"); i >= 0 {
+		return diffLine[i+3:]
+	}
+	return diffLine
+}
+
+// isTestPath reports whether path looks like a test file on a word boundary:
+// a "test"/"tests" directory, a file stem of "test"/"tests", a "_test" suffix
+// or a "test_" prefix. "latest" and "contest" do not match.
+func isTestPath(path string) bool {
+	parts := strings.Split(path, "/")
+	for _, d := range parts[:len(parts)-1] {
+		if d == "test" || d == "tests" {
+			return true
+		}
+	}
+	name := parts[len(parts)-1]
+	if i := strings.Index(name, "."); i >= 0 {
+		name = name[:i]
+	}
+	return name == "test" || name == "tests" ||
+		strings.HasSuffix(name, "_test") || strings.HasPrefix(name, "test_")
 }
 
 func isErrorLine(line string) bool {

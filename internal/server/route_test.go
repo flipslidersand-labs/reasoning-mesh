@@ -13,7 +13,7 @@ import (
 
 func TestRoute_TruncatedFlag(t *testing.T) {
 	for _, trunc := range []bool{true, false} {
-		r := router.New(router.Config{Default: truncAdapter{truncated: trunc}})
+		r := mustRouter(t, router.Config{Default: truncAdapter{truncated: trunc}})
 		srv, pending := server.Build(server.Config{Router: r})
 		t.Cleanup(pending.Stop)
 		rec := httptest.NewRecorder()

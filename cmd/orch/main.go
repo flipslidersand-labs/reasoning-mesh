@@ -160,13 +160,16 @@ func run(cfg *config.Config) error {
 		log.Printf("ANTHROPIC_API_KEY not set — architecture tasks → ornith")
 	}
 
-	r := router.New(router.Config{
+	r, err := router.New(router.Config{
 		Debugging:      qwen,
 		Testing:        qwen,
 		Implementation: ornith,
 		Architecture:   claudeAdapter,
 		Default:        qwen,
 	})
+	if err != nil {
+		log.Fatalf("router: %v", err)
+	}
 
 	// --- Bearer Token ---
 	// LLMO_ORCH_TOKEN protects all endpoints except /v1/health and /healthz.
