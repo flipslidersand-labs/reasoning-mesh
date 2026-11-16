@@ -3,7 +3,7 @@ package validate_test
 import (
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/validate"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/validate"
 )
 
 func TestTaskType(t *testing.T) {

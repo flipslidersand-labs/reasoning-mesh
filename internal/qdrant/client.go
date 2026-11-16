@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/validate"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/validate"
 )
 
 type Client struct {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/ollama"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/ollama"
 )
 
 // OllamaAdapter wraps the Ollama HTTP client for a specific model.

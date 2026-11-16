@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
-	"github.com/flipslidersand/reasoning-mesh/internal/router"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/router"
 )
 
 // RouteRequest is the JSON body for POST /v1/route.

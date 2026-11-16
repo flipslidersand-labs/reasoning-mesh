@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/config"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/config"
 )
 
 type askRequest struct {

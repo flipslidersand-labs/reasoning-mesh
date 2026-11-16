@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/config"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/config"
 )
 
 // maxIngestFileBytes is the maximum size accepted for --file ingestion.

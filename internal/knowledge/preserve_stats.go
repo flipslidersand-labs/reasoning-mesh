@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/qdrant"
 )
 
 // statsKeys are the feedback statistics owned by ScoreUpdater. Re-ingesting
