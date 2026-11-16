@@ -170,12 +170,26 @@ func TestChunkDiff_Boundaries(t *testing.T) {
 			want: nil,
 		},
 		{
-			// Current behaviour: diff --git flushes any non-empty buffer
-			// regardless of size (no minChunkLen check). Pinned as-is.
-			name: "small chunk before next diff --git is still emitted",
+			// diff --git applies the same minChunkLen check as @@ and EOF;
+			// a small chunk is dropped (not carried into the next file).
+			name: "small chunk before next diff --git is dropped",
 			in:   hdr + "@@ a\n+x\ndiff --git a/y.go b/y.go\n" + hunkLine(60),
 			want: []wantChunk{
-				{"@@ a\n+x\n", impl},
+				{hunkLine(60) + "\n", impl},
+			},
+		},
+		{
+			name: "chunk of exactly 50 bytes before next diff --git is dropped",
+			in:   hdr + hunkLine(50) + "\ndiff --git a/y.go b/y.go\n" + hunkLine(60),
+			want: []wantChunk{
+				{hunkLine(60) + "\n", impl},
+			},
+		},
+		{
+			name: "chunk of 51 bytes before next diff --git is emitted",
+			in:   hdr + hunkLine(51) + "\ndiff --git a/y.go b/y.go\n" + hunkLine(60),
+			want: []wantChunk{
+				{hunkLine(51) + "\n", impl},
 				{hunkLine(60) + "\n", impl},
 			},
 		},
