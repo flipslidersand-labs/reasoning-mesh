@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/ollama"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/ollama"
 )
 
 func TestOllamaAdapter_TruncatedFlag(t *testing.T) {

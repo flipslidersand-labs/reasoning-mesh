@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/config"
-	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
-	"github.com/flipslidersand/reasoning-mesh/internal/ollama"
-	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
-	"github.com/flipslidersand/reasoning-mesh/internal/router"
-	"github.com/flipslidersand/reasoning-mesh/internal/server"
-	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/config"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/ollama"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/qdrant"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/router"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/server"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/telemetry"
 )
 
 func main() {

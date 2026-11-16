@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/router"
-	"github.com/flipslidersand/reasoning-mesh/internal/server"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/router"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/server"
 )
 
 func TestRoute_TruncatedFlag(t *testing.T) {

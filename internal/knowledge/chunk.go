@@ -3,7 +3,7 @@ package knowledge
 import (
 	"strings"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
 )
 
 // Chunk is a decision point extracted from a git diff or CI log.
@@ -86,7 +86,7 @@ func ChunkCILog(ciLog string) []Chunk {
 func inferTaskTypeFromPath(diffLine string) eval.TaskType {
 	lower := strings.ToLower(diffLine)
 	switch {
-	case isTestPath(diffPath(lower)):
+	case isTestPath(diffPath(diffLine)):
 		return eval.TaskTesting
 	case strings.Contains(lower, "arch") || strings.Contains(lower, "design"):
 		return eval.TaskArchitecture
@@ -97,26 +97,54 @@ func inferTaskTypeFromPath(diffLine string) eval.TaskType {
 	}
 }
 
-// diffPath extracts the path from a "diff --git a/X b/Y" line (the b/ side).
-// If the line has no " b/" marker the whole line is returned.
+// diffPath extracts the path from a "diff --git" line (the second/b side).
+// It handles the "a/X b/Y" form and the --no-prefix form ("X Y", where both
+// tokens are identical or one lacks the a/ b/ prefix). If nothing can be
+// extracted the whole line is returned.
 func diffPath(diffLine string) string {
-	if i := strings.LastIndex(diffLine, " b/"); i >= 0 {
-		return diffLine[i+3:]
+	line := strings.TrimRight(diffLine, "\r")
+	rest := strings.TrimPrefix(line, "diff --git ")
+	// Identical halves ("X X"): handles no-prefix paths containing spaces.
+	if n := len(rest); n%2 == 1 && rest[n/2] == ' ' && rest[:n/2] == rest[n/2+1:] {
+		return rest[n/2+1:]
 	}
-	return diffLine
+	if i := strings.LastIndex(line, " b/"); i >= 0 {
+		return line[i+3:]
+	}
+	if rest != line {
+		if f := strings.Fields(rest); len(f) >= 2 {
+			return strings.Trim(f[len(f)-1], "\"")
+		}
+	}
+	return line
 }
 
 // isTestPath reports whether path looks like a test file on a word boundary:
-// a "test"/"tests" directory, a file stem of "test"/"tests", a "_test" suffix
-// or a "test_" prefix. "latest" and "contest" do not match.
+// a "test"/"tests"/"testdata" directory, a file stem of "test"/"tests", a
+// "_test" suffix, a "test_" prefix, a ".test."/".spec." token in the file name
+// (foo.test.ts), or a CamelCase "...Test" stem (FooTest.java). "latest",
+// "contest" and "Contest.java" do not match.
 func isTestPath(path string) bool {
 	parts := strings.Split(path, "/")
 	for _, d := range parts[:len(parts)-1] {
-		if d == "test" || d == "tests" {
+		d = strings.ToLower(d)
+		if d == "test" || d == "tests" || d == "testdata" {
 			return true
 		}
 	}
-	name := parts[len(parts)-1]
+	orig := parts[len(parts)-1]
+	name := strings.ToLower(orig)
+	if strings.Contains(name, ".test.") || strings.Contains(name, ".spec.") {
+		return true
+	}
+	if i := strings.Index(orig, "."); i >= 0 {
+		orig = orig[:i]
+	}
+	if len(orig) > 4 && strings.HasSuffix(orig, "Test") {
+		if c := orig[len(orig)-5]; (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
+			return true
+		}
+	}
 	if i := strings.Index(name, "."); i >= 0 {
 		name = name[:i]
 	}

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/server"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/server"
 )
 
 // claimCommit claims the entry and, if it was granted, commits it (removing it).

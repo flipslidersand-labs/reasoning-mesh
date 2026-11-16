@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/bench"
-	"github.com/flipslidersand/reasoning-mesh/internal/config"
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
-	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
-	"github.com/flipslidersand/reasoning-mesh/internal/ollama"
-	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
-	"github.com/flipslidersand/reasoning-mesh/internal/validate"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/bench"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/config"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/ollama"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/qdrant"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/validate"
 )
 
 func main() {

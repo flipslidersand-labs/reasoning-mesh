@@ -6,7 +6,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/telemetry"
 )
 
 func TestSetup_NoOTLPEndpoint(t *testing.T) {

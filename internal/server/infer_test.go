@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
-	"github.com/flipslidersand/reasoning-mesh/internal/router"
-	"github.com/flipslidersand/reasoning-mesh/internal/server"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/router"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/server"
 )
 
 // stubRetriever returns a fixed set of KnowledgeItems.

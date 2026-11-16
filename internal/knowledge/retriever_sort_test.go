@@ -7,7 +7,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
 )
 
 func items(scores ...float64) []eval.KnowledgeItem {

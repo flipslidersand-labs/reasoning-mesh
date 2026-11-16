@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/knowledge"
 )
 
 func TestScoreUpdater_SendAndStop(t *testing.T) {

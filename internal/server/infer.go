@@ -12,11 +12,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
-	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
-	"github.com/flipslidersand/reasoning-mesh/internal/router"
-	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
-	"github.com/flipslidersand/reasoning-mesh/internal/validate"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/router"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/telemetry"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/validate"
 )
 
 // InferRetriever is the interface the infer handler needs for RAG lookup.

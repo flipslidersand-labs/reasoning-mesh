@@ -15,7 +15,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
 )
 
 // RunEntry is one data point in the longitudinal series.
