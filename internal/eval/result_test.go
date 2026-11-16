@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestKeywordRecall_CommaSynonymEitherMatches(t *testing.T) {
@@ -146,5 +147,20 @@ func TestPrintTable_TruncatedColumn(t *testing.T) {
 	}
 	if !strings.HasSuffix(rows["mC"], "boom") {
 		t.Errorf("error row lost ERROR cell: %q", rows["mC"])
+	}
+}
+
+func TestPrintTable_ErrorTruncationKeepsUTF8(t *testing.T) {
+	var buf strings.Builder
+	// 3-byte runes: a 30-byte cut lands mid-rune only if cutting by bytes.
+	printTable(&buf, []Result{
+		{Model: "mA", Condition: CondNoRAG, CaseID: "c1", Accuracy: -1, Error: strings.Repeat("あ", 40)},
+	})
+	out := buf.String()
+	if !utf8.ValidString(out) {
+		t.Errorf("table output is not valid UTF-8: %q", out)
+	}
+	if !strings.Contains(out, strings.Repeat("あ", 30)+"...") {
+		t.Errorf("want 30 runes then ellipsis, got %q", out)
 	}
 }

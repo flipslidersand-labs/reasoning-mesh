@@ -163,8 +163,8 @@ func printTable(out io.Writer, results []Result) {
 	for _, r := range results {
 		errStr := ""
 		if r.Error != "" {
-			if len(r.Error) > 30 {
-				errStr = r.Error[:30] + "..."
+			if rs := []rune(r.Error); len(rs) > 30 {
+				errStr = string(rs[:30]) + "..."
 			} else {
 				errStr = r.Error
 			}
