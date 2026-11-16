@@ -169,9 +169,9 @@ func TestFeedbackHandler_ResponseCountMatchesIDs(t *testing.T) {
 // stubPending is a minimal PendingLookup for testing request_id resolution.
 type stubPending struct{ ids []string }
 
-func (s *stubPending) Get(_ string) []string { return s.ids }
-
-func (s *stubPending) Restore(_ string, _ []string) {}
+func (s *stubPending) Claim(_ string) ([]string, bool) { return s.ids, false }
+func (s *stubPending) Commit(_ string)                 {}
+func (s *stubPending) Release(_ string)                {}
 
 func TestFeedbackHandler_RequestIDResolution(t *testing.T) {
 	u := newTestUpdater()
@@ -201,17 +201,37 @@ func TestFeedbackHandler_RequestIDNotFound(t *testing.T) {
 	}
 }
 
-// consumingPending mimics server.PendingStore: Get consumes the entry,
-// Restore puts it back under the same request ID.
+// consumingPending mimics server.PendingStore: Claim reserves the entry,
+// Commit removes it, Release keeps it for a retry.
 type consumingPending struct{ m map[string][]string }
 
-func (c *consumingPending) Get(id string) []string {
-	ids := c.m[id]
-	delete(c.m, id)
-	return ids
-}
+func (c *consumingPending) Claim(id string) ([]string, bool) { return c.m[id], false }
+func (c *consumingPending) Commit(id string)                 { delete(c.m, id) }
+func (c *consumingPending) Release(_ string)                 {}
 
-func (c *consumingPending) Restore(id string, ids []string) { c.m[id] = ids }
+// busyPending always reports the request_id as in flight.
+type busyPending struct{}
+
+func (busyPending) Claim(_ string) ([]string, bool) { return nil, true }
+func (busyPending) Commit(_ string)                 {}
+func (busyPending) Release(_ string)                { panic("Release must not be called when busy") }
+
+// A busy request_id must yield 503 (retryable) and never reach the updater.
+func TestFeedbackHandler_BusyRequestID503(t *testing.T) {
+	u := knowledge.NewScoreUpdater((*qdrant.Client)(nil), "test", 1) // not started
+	defer u.Stop()
+	h := trigger.NewFeedbackHandler(u, busyPending{})
+	body, _ := json.Marshal(trigger.FeedbackRequest{RequestID: "req-1", Outcome: boolPtr(true)})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, feedbackRequest(body, "test-token"))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503, got %d", rec.Code)
+	}
+	// The single buffer slot must still be free: Send was not called.
+	if !u.Send(knowledge.FeedbackEvent{KnowledgeIDs: []string{validUUID1}, Outcome: true}) {
+		t.Fatal("updater buffer was consumed; Send must not be called when busy")
+	}
+}
 
 // Regression for #257: a 503 (buffer full) must not burn the request_id, so a
 // retry with the same request_id succeeds once the buffer has room; after a

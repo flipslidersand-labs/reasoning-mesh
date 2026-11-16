@@ -20,6 +20,7 @@ type pendingEntry struct {
 	knowledgeIDs []string
 	expiresAt    time.Time
 	insertedAt   time.Time
+	inflight     bool // claimed by an in-progress feedback request
 }
 
 // PendingStore maps request IDs to the knowledge IDs used during inference.
@@ -79,23 +80,66 @@ func (s *PendingStore) Put(knowledgeIDs []string) string {
 	return id
 }
 
-// Restore puts knowledge IDs back under an existing request ID (with a fresh
-// TTL). Callers use it when a Get-consumed request could not be processed
-// (e.g. the score updater buffer was full) so the client can retry.
-func (s *PendingStore) Restore(requestID string, knowledgeIDs []string) {
+// Claim reserves the entry for processing without removing it. It returns
+// (ids, false) on success; the caller must then call Commit (processed) or
+// Release (not processed, e.g. 503) exactly once. It returns (nil, false) when
+// the entry is missing or expired (expired entries are deleted), and
+// (nil, true) when another caller already holds the entry (busy).
+// Because the entry stays in the map, a concurrent duplicate sees busy rather
+// than "not found", and the original TTL is never extended.
+//
+// Known limit: a retry after a 503 gets "not found" if the earlier holder
+// succeeded in the meantime.
+func (s *PendingStore) Claim(requestID string) (ids []string, busy bool) {
 	s.mu.Lock()
-	s.insertLocked(requestID, knowledgeIDs)
+	defer s.mu.Unlock()
+	e, ok := s.entries[requestID]
+	if !ok {
+		return nil, false
+	}
+	if s.clock().After(e.expiresAt) {
+		delete(s.entries, requestID)
+		return nil, false
+	}
+	if e.inflight {
+		return nil, true
+	}
+	e.inflight = true
+	s.entries[requestID] = e
+	return e.knowledgeIDs, false
+}
+
+// Commit removes a claimed entry (the request was processed). No-op if the
+// entry is already gone.
+func (s *PendingStore) Commit(requestID string) {
+	s.mu.Lock()
+	delete(s.entries, requestID)
 	s.mu.Unlock()
 }
 
-// insertLocked stores an entry, evicting the oldest one when at cap.
-// s.mu must be held.
+// Release clears the claim so the request can be retried. The TTL is not
+// touched, and an entry that has disappeared (swept, committed) is not revived.
+func (s *PendingStore) Release(requestID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if e, ok := s.entries[requestID]; ok {
+		e.inflight = false
+		s.entries[requestID] = e
+	}
+}
+
+// insertLocked stores an entry, evicting the oldest non-inflight one when at
+// cap. If every entry is inflight nothing is evicted and the cap is exceeded
+// temporarily (bounded by concurrent claims). s.mu must be held.
 func (s *PendingStore) insertLocked(id string, knowledgeIDs []string) {
 	now := s.clock()
 	if _, exists := s.entries[id]; !exists && len(s.entries) >= s.maxCap {
 		oldest := ""
 		var oldestTime time.Time
 		for k, e := range s.entries {
+			if e.inflight {
+				continue
+			}
 			if oldest == "" || e.insertedAt.Before(oldestTime) {
 				oldest = k
 				oldestTime = e.insertedAt
