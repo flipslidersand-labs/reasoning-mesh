@@ -29,7 +29,7 @@ func (s *stubRetriever) Retrieve(_ context.Context, _ string, _ eval.TaskType, _
 func buildInferServer(t *testing.T, retriever server.InferRetriever, token string) http.Handler {
 	t.Helper()
 	stub := &stubAdapter{name: "stub-model"}
-	r := router.New(router.Config{Default: stub})
+	r := mustRouter(t, router.Config{Default: stub})
 	srv, pending := server.Build(server.Config{
 		Router:      r,
 		Retriever:   retriever,
@@ -264,7 +264,7 @@ func (a truncAdapter) Generate(context.Context, string) (router.Response, error)
 
 func TestInfer_TruncatedFlag(t *testing.T) {
 	for _, trunc := range []bool{true, false} {
-		r := router.New(router.Config{Default: truncAdapter{truncated: trunc}})
+		r := mustRouter(t, router.Config{Default: truncAdapter{truncated: trunc}})
 		srv, pending := server.Build(server.Config{Router: r})
 		t.Cleanup(pending.Stop)
 		body, _ := json.Marshal(server.InferRequest{Prompt: "x", TaskType: "debugging"})
