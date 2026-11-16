@@ -3,8 +3,8 @@ package knowledge_test
 import (
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
-	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/knowledge"
 )
 
 func TestDeterministicID_Stable(t *testing.T) {

@@ -7,9 +7,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
-	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
-	"github.com/flipslidersand/reasoning-mesh/internal/tasktype"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/qdrant"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/tasktype"
 )
 
 // FailureRecord is the input to the Experience Store.

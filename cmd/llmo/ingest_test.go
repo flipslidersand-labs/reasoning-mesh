@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/validate"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/validate"
 )
 
 func TestRunIngest_File(t *testing.T) {

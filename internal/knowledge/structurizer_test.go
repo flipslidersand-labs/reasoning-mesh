@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
-	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
-	"github.com/flipslidersand/reasoning-mesh/internal/ollama"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/ollama"
 )
 
 func ollamaStub(t *testing.T, response string) *httptest.Server {

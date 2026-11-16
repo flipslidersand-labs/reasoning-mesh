@@ -10,10 +10,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/bearer"
-	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
-	"github.com/flipslidersand/reasoning-mesh/internal/telemetry"
-	"github.com/flipslidersand/reasoning-mesh/internal/validate"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/bearer"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/telemetry"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/validate"
 )
 
 // maxFeedbackBodyBytes is the maximum allowed request body size for /v1/feedback.

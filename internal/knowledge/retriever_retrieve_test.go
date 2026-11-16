@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
-	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/qdrant"
 )
 
 // retrieveFixture は embedder と Qdrant を httptest で差し替えた Retriever 環境。

@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
-	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/qdrant"
 )
 
 // QdrantRetriever implements eval.Retriever using Qdrant + e5 embeddings.

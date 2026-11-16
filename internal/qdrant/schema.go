@@ -3,7 +3,7 @@ package qdrant
 import (
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/tasktype"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/tasktype"
 )
 
 // TaskType represents the category of a knowledge item. It is the same type as

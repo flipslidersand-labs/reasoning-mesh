@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
-	"github.com/flipslidersand/reasoning-mesh/internal/router"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/router"
 )
 
 // stubAdapter is a test double that records which adapter was called.

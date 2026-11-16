@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/config"
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/config"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
 )
 
 func TestResolveConditions_Valid(t *testing.T) {

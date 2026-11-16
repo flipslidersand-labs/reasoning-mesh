@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
 )
 
 // Router selects a ModelAdapter based on the task type.

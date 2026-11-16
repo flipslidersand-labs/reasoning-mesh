@@ -3,7 +3,7 @@ package knowledge
 import (
 	"strings"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
 )
 
 // Chunk is a decision point extracted from a git diff or CI log.

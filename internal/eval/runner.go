@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/ollama"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/ollama"
 )
 
 const (

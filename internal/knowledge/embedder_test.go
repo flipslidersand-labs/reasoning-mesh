@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/knowledge"
 )
 
 type capturedEmbed struct {

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
-	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/qdrant"
 )
 
 // scoreFakeQdrant mocks the retrieve (POST /points) and set_payload

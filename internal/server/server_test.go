@@ -9,8 +9,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/router"
-	"github.com/flipslidersand/reasoning-mesh/internal/server"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/router"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/server"
 )
 
 func TestMain(m *testing.M) {
