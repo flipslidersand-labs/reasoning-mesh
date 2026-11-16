@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/ollama"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/ollama"
 )
 
 // ollamaServer creates a test Ollama server that returns responses in sequence.

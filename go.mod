@@ -1,4 +1,4 @@
-module github.com/flipslidersand/reasoning-mesh
+module github.com/flipslidersand-labs/reasoning-mesh
 
 go 1.26.10
 

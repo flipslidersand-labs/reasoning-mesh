@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/bench"
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/bench"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
 )
 
 func writeRun(t *testing.T, dir string, runAt time.Time, summaries []eval.Summary) {

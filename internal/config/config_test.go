@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/knowledge"
 )
 
 func validConfig() *Config {

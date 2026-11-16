@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/config"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/config"
 )
 
 // captureStdout redirects os.Stdout to a pipe and returns what was written.

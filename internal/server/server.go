@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/bearer"
-	"github.com/flipslidersand/reasoning-mesh/internal/knowledge"
-	"github.com/flipslidersand/reasoning-mesh/internal/router"
-	"github.com/flipslidersand/reasoning-mesh/internal/trigger"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/bearer"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/knowledge"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/router"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/trigger"
 )
 
 // Config holds the dependencies needed to build the server.

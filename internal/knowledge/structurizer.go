@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/eval"
-	"github.com/flipslidersand/reasoning-mesh/internal/ollama"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/eval"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/ollama"
 )
 
 // StructuredChunk is the output of field-level extraction on a raw Chunk.

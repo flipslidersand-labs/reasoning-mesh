@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/server"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/server"
 )
 
 func TestPendingStore_PutAndGet(t *testing.T) {

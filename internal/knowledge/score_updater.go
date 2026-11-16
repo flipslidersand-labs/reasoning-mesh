@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/qdrant"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/qdrant"
 )
 
 // maxConcurrentScoreUpdates caps the number of concurrent Qdrant UpdatePayload

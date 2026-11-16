@@ -3,7 +3,7 @@ package bearer_test
 import (
 	"testing"
 
-	"github.com/flipslidersand/reasoning-mesh/internal/bearer"
+	"github.com/flipslidersand-labs/reasoning-mesh/internal/bearer"
 )
 
 func TestMatches(t *testing.T) {
