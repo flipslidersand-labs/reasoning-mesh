@@ -142,7 +142,9 @@ func buildIngestPayload(commitRef, filePath string) (ingestRequest, error) {
 	return ingestRequest{CommitSHA: sha, Diff: diff}, nil
 }
 
-// truncateUTF8 cuts s to at most max bytes without splitting a UTF-8 rune.
+// truncateUTF8 cuts s to at most max bytes without splitting a UTF-8 rune,
+// then retreats to just after the last newline within that prefix. If the
+// prefix contains no newline, the rune-boundary cut is kept.
 func truncateUTF8(s string, max int) string {
 	if len(s) <= max {
 		return s
@@ -150,7 +152,11 @@ func truncateUTF8(s string, max int) string {
 	for max > 0 && !utf8.RuneStart(s[max]) {
 		max--
 	}
-	return s[:max]
+	cut := s[:max]
+	if i := strings.LastIndexByte(cut, '\n'); i >= 0 {
+		return cut[:i+1]
+	}
+	return cut
 }
 
 // hasParent reports whether a raw commit object lists a parent in its header.

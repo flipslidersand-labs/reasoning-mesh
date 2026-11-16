@@ -293,8 +293,11 @@ func TestBuildIngestPayload_GitDiffTruncatedTo32KiB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(payload.Diff) != 32*1024 {
-		t.Errorf("len(diff) = %d, want %d", len(payload.Diff), 32*1024)
+	if n := len(payload.Diff); n > 32*1024 || n < 32*1024-200 {
+		t.Errorf("len(diff) = %d, want within 200 bytes below %d", n, 32*1024)
+	}
+	if !strings.HasSuffix(payload.Diff, "\n") {
+		t.Errorf("diff should end on a line boundary")
 	}
 }
 
@@ -380,14 +383,24 @@ func TestBuildIngestPayload_GitDiffTruncationKeepsUTF8(t *testing.T) {
 	if !utf8.ValidString(payload.Diff) {
 		t.Errorf("diff is not valid UTF-8 after truncation")
 	}
-	if len(payload.Diff) > 32*1024 || len(payload.Diff) < 32*1024-3 {
-		t.Errorf("len(diff) = %d, want within 3 bytes of %d", len(payload.Diff), 32*1024)
+	// The cut retreats to a line boundary; the result must stay valid UTF-8.
+	if len(payload.Diff) > 32*1024 {
+		t.Errorf("len(diff) = %d, want <= %d", len(payload.Diff), 32*1024)
 	}
 }
 
 func TestTruncateUTF8(t *testing.T) {
 	if got := truncateUTF8("あいう", 4); got != "あ" {
 		t.Errorf("got %q, want %q", got, "あ")
+	}
+	if got := truncateUTF8("ab\ncd\nef", 7); got != "ab\ncd\n" {
+		t.Errorf("line boundary: got %q", got)
+	}
+	if got := truncateUTF8("ab\ncdあいう", 9); got != "ab\n" {
+		t.Errorf("line boundary with multibyte: got %q", got)
+	}
+	if got := truncateUTF8("あいうえお", 7); got != "あい" {
+		t.Errorf("no newline: got %q, want rune boundary", got)
 	}
 	if got := truncateUTF8("abc", 10); got != "abc" {
 		t.Errorf("got %q", got)
