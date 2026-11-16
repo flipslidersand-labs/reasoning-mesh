@@ -22,11 +22,14 @@ const maxFeedbackBodyBytes = 1 << 20 // 1 MiB
 // PendingLookup is the subset of server.PendingStore needed by the feedback handler.
 // Defined as an interface to avoid an import cycle (trigger → server).
 type PendingLookup interface {
-	// Get returns the IDs and consumes the entry (atomic, so concurrent
-	// duplicates cannot both succeed).
-	Get(requestID string) []string
-	// Restore puts a consumed entry back so the client can retry after a 503.
-	Restore(requestID string, knowledgeIDs []string)
+	// Claim reserves the entry without removing it. busy reports that another
+	// request holds it; ids==nil && !busy means not found/expired. A successful
+	// claim must be followed by exactly one of Commit or Release.
+	Claim(requestID string) (ids []string, busy bool)
+	// Commit removes the claimed entry (feedback was enqueued).
+	Commit(requestID string)
+	// Release gives the claim back so the client can retry after a 503.
+	Release(requestID string)
 }
 
 // FeedbackRequest is the JSON body for POST /v1/feedback.
@@ -116,8 +119,21 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ids := req.KnowledgeIDs
+	claimed := false
 	if len(ids) == 0 && req.RequestID != "" && h.pending != nil {
-		ids = h.pending.Get(req.RequestID)
+		got, busy := h.pending.Claim(req.RequestID)
+		if busy {
+			// Another request with the same request_id is in flight; the client
+			// may retry (not a permanent 400).
+			span.SetStatus(codes.Error, "request_id in flight")
+			writeDropped(w, 0)
+			return
+		}
+		ids = got
+		// Release is a no-op after Commit, so a plain defer guarantees the
+		// claim is never leaked (including on 400 / panic paths).
+		claimed = true
+		defer h.pending.Release(req.RequestID)
 	}
 	if len(ids) == 0 {
 		span.SetStatus(codes.Error, "no knowledge_ids resolved")
@@ -144,21 +160,13 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = ctx // span is derived from ctx; suppress unused warning
 
 	if !enqueued {
-		// Do not burn the request_id: the client is told to retry.
-		if req.RequestID != "" && len(req.KnowledgeIDs) == 0 && h.pending != nil {
-			h.pending.Restore(req.RequestID, ids)
-		}
+		// The claim is released by the defer above, so the request_id is not burned.
 		span.SetStatus(codes.Error, "score updater buffer full, feedback dropped")
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		if err := json.NewEncoder(w).Encode(map[string]any{
-			"status":   "dropped",
-			"accepted": false,
-			"count":    len(ids),
-		}); err != nil {
-			log.Printf("feedback: encode response: %v", err)
-		}
+		writeDropped(w, len(ids))
 		return
+	}
+	if claimed {
+		h.pending.Commit(req.RequestID)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -175,4 +183,17 @@ func (h *FeedbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // RegisterFeedbackRoute attaches the feedback endpoint to the mux.
 func RegisterFeedbackRoute(mux *http.ServeMux, updater *knowledge.ScoreUpdater, pending PendingLookup) {
 	mux.Handle("/v1/feedback", NewFeedbackHandler(updater, pending))
+}
+
+// writeDropped writes the 503 "dropped" response.
+func writeDropped(w http.ResponseWriter, count int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"status":   "dropped",
+		"accepted": false,
+		"count":    count,
+	}); err != nil {
+		log.Printf("feedback: encode response: %v", err)
+	}
 }

@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -93,22 +94,6 @@ func TestPendingStore_CapEvictsOldest(t *testing.T) {
 		if got := s.Get(id); got == nil {
 			t.Errorf("entry %s should still exist", id)
 		}
-	}
-}
-
-func TestPendingStore_RestoreAfterGet(t *testing.T) {
-	s := server.NewPendingStore()
-	defer s.Stop()
-	reqID := s.Put([]string{"x"})
-
-	ids := s.Get(reqID)
-	s.Restore(reqID, ids)
-
-	if got := s.Get(reqID); len(got) != 1 || got[0] != "x" {
-		t.Errorf("Get after Restore = %v, want [x]", got)
-	}
-	if s.Get(reqID) != nil {
-		t.Error("entry should be consumed again after the second Get")
 	}
 }
 
@@ -208,7 +193,8 @@ func TestPendingStore_ConcurrentAddGetSweep(t *testing.T) {
 				if got := s.Get(id); got != nil && i%2 == 0 {
 					t.Errorf("expired entry returned %v", got)
 				}
-				s.Restore(id, []string{"r"})
+				_, _ = s.Claim(id)
+				s.Release(id)
 				_ = s.Len()
 			}
 		}()
@@ -282,5 +268,122 @@ func TestPendingStore_Put_TTLStampedFromInjectedClock(t *testing.T) {
 				t.Errorf("Get = %v, want nil", got)
 			}
 		})
+	}
+}
+
+func TestPendingStore_Claim_ConcurrentExactlyOneOK(t *testing.T) {
+	s := server.NewPendingStore()
+	defer s.Stop()
+	id := s.Put([]string{"x"})
+	const n = 32
+	var ok, busy atomic.Int32
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			ids, b := s.Claim(id)
+			switch {
+			case b:
+				busy.Add(1)
+			case len(ids) == 1:
+				ok.Add(1)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if ok.Load() != 1 || busy.Load() != n-1 {
+		t.Fatalf("ok=%d busy=%d, want 1 and %d", ok.Load(), busy.Load(), n-1)
+	}
+}
+
+func TestPendingStore_Release_KeepsOriginalTTL(t *testing.T) {
+	s := server.NewPendingStore()
+	defer s.Stop()
+	cur := fixedNow
+	s.SetNow(func() time.Time { return cur })
+	id := s.Put([]string{"x"})
+
+	cur = fixedNow.Add(20 * time.Minute)
+	if ids, busy := s.Claim(id); busy || len(ids) != 1 {
+		t.Fatalf("claim at 20m = %v,%v", ids, busy)
+	}
+	s.Release(id)
+
+	cur = fixedNow.Add(31 * time.Minute)
+	if ids, busy := s.Claim(id); busy || ids != nil {
+		t.Fatalf("claim at 31m = %v,%v, want not found (TTL not extended)", ids, busy)
+	}
+	if s.Len() != 0 {
+		t.Errorf("Len = %d, want 0 (expired entry removed)", s.Len())
+	}
+}
+
+func TestPendingStore_Release_AtCapDoesNotChangeStore(t *testing.T) {
+	s := server.NewPendingStoreWithCap(3)
+	defer s.Stop()
+	ids := []string{s.Put([]string{"a"}), s.Put([]string{"b"}), s.Put([]string{"c"})}
+	if got, _ := s.Claim(ids[0]); got == nil {
+		t.Fatal("claim failed")
+	}
+	s.Release(ids[0])
+	if s.Len() != 3 {
+		t.Fatalf("Len = %d, want 3", s.Len())
+	}
+	for _, id := range ids {
+		if got, busy := s.Claim(id); busy || got == nil {
+			t.Errorf("entry %s lost after Release", id)
+		}
+	}
+}
+
+func TestPendingStore_Put_DoesNotEvictInflight(t *testing.T) {
+	s := server.NewPendingStoreWithCap(3)
+	defer s.Stop()
+	cur := fixedNow
+	s.SetNow(func() time.Time { cur = cur.Add(time.Second); return cur })
+	oldest := s.Put([]string{"a"})
+	second := s.Put([]string{"b"})
+	third := s.Put([]string{"c"})
+	if got, _ := s.Claim(oldest); got == nil {
+		t.Fatal("claim failed")
+	}
+	s.Put([]string{"d"})
+	if got, busy := s.Claim(second); got != nil || busy {
+		t.Errorf("second-oldest should have been evicted, got %v,%v", got, busy)
+	}
+	if _, busy := s.Claim(oldest); !busy {
+		t.Error("inflight oldest must survive eviction")
+	}
+	if got, _ := s.Claim(third); got == nil {
+		t.Error("third should remain")
+	}
+}
+
+func TestPendingStore_Release_DoesNotResurrect(t *testing.T) {
+	s := server.NewPendingStore()
+	defer s.Stop()
+	cur := fixedNow
+	s.SetNow(func() time.Time { return cur })
+
+	swept := s.Put([]string{"a"})
+	_, _ = s.Claim(swept)
+	cur = fixedNow.Add(time.Hour)
+	s.Sweep()
+	s.Release(swept)
+
+	committed := s.Put([]string{"b"})
+	_, _ = s.Claim(committed)
+	s.Commit(committed)
+	s.Release(committed)
+
+	if s.Len() != 0 {
+		t.Fatalf("Len = %d, want 0", s.Len())
+	}
+	if ids, busy := s.Claim(committed); ids != nil || busy {
+		t.Errorf("committed entry resurrected: %v,%v", ids, busy)
 	}
 }
