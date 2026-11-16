@@ -233,6 +233,17 @@ func TestChunkDiff_PathInference(t *testing.T) {
 		{"pkg/test/x.go", eval.TaskTesting},
 		{"pkg/test_util.go", eval.TaskTesting},
 		{"test.py", eval.TaskTesting},
+		{"foo.test.ts", eval.TaskTesting},
+		{"foo.spec.js", eval.TaskTesting},
+		{"src/FooTest.java", eval.TaskTesting},
+		{"Foo2Test.java", eval.TaskTesting},
+		{"Contest.java", eval.TaskImplementation},
+		{"Latest.java", eval.TaskImplementation},
+		{"Attest.java", eval.TaskImplementation},
+		{"attest.go", eval.TaskImplementation},
+		{"latest.ts", eval.TaskImplementation},
+		{"pkg/testdata/x.go", eval.TaskTesting},
+		{"pkg/testdata_x/x.go", eval.TaskImplementation},
 		{"latest_fix.go", eval.TaskDebugging},
 		{"architecture.go", eval.TaskArchitecture},
 		{"fix.go", eval.TaskDebugging},
@@ -248,6 +259,32 @@ func TestChunkDiff_PathInference(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			in := "diff --git a/" + tt.path + " b/" + tt.path + "\n" + hunkLine(60)
+			assertChunks(t, knowledge.ChunkDiff(in), []wantChunk{{hunkLine(60) + "\n", tt.want}})
+		})
+	}
+}
+
+// TestChunkDiff_DiffLineForms covers diffPath through raw diff header lines.
+func TestChunkDiff_DiffLineForms(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want eval.TaskType
+	}{
+		{"no-prefix test_ prefix", "diff --git test_a.go test_a.go", eval.TaskTesting},
+		{"no-prefix plain", "diff --git a.go a.go", eval.TaskImplementation},
+		{"no-prefix with spaces", "diff --git my dir/test_a.go my dir/test_a.go", eval.TaskTesting},
+		{"no-prefix rename", "diff --git old.go test_new.go", eval.TaskTesting},
+		{"no-prefix testdata dir", "diff --git testdata/x.go testdata/x.go", eval.TaskTesting},
+		{"prefixed rename to test", "diff --git a/old.go b/old_test.go", eval.TaskTesting},
+		{"prefixed rename from test", "diff --git a/old_test.go b/new.go", eval.TaskImplementation},
+		{"prefixed with spaces", "diff --git a/my dir/x_test.go b/my dir/x_test.go", eval.TaskTesting},
+		{"trailing CR", "diff --git a/x_test.go b/x_test.go\r", eval.TaskTesting},
+		{"quoted", "diff --git \"a/x_test.go\" \"b/x_test.go\"", eval.TaskTesting},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := tt.line + "\n" + hunkLine(60)
 			assertChunks(t, knowledge.ChunkDiff(in), []wantChunk{{hunkLine(60) + "\n", tt.want}})
 		})
 	}
