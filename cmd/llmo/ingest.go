@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/flipslidersand-labs/reasoning-mesh/internal/config"
 )
@@ -122,12 +123,49 @@ func buildIngestPayload(commitRef, filePath string) (ingestRequest, error) {
 	}
 	sha := strings.TrimSpace(string(shaOut))
 
-	// Get diff (cap at 32 KiB to match CI workflow); ignore error — empty diff is acceptable
-	diffOut, _ := exec.Command("git", "diff", commitRef+"~1", commitRef, "--", "*.go").Output()
-	diff := string(diffOut)
-	if len(diff) > 32*1024 {
-		diff = diff[:32*1024]
+	// A root commit has no parent, so "git diff <ref>~1" would fail; an empty
+	// diff is explicitly accepted in that case. Any other failure is an error.
+	commitObj, err := exec.Command("git", "cat-file", "commit", sha).Output()
+	if err != nil {
+		return ingestRequest{}, fmt.Errorf("git cat-file %s: %w", commitRef, err)
+	}
+	diff := ""
+	if hasParent(string(commitObj)) {
+		// Cap at 32 KiB to match CI workflow.
+		diffOut, err := exec.Command("git", "diff", commitRef+"~1", commitRef, "--", "*.go").Output()
+		if err != nil {
+			return ingestRequest{}, fmt.Errorf("git diff %s: %w", commitRef, err)
+		}
+		diff = truncateUTF8(string(diffOut), 32*1024)
 	}
 
 	return ingestRequest{CommitSHA: sha, Diff: diff}, nil
+}
+
+// truncateUTF8 cuts s to at most max bytes without splitting a UTF-8 rune,
+// then retreats to just after the last newline within that prefix. If the
+// prefix contains no newline, the rune-boundary cut is kept.
+func truncateUTF8(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	for max > 0 && !utf8.RuneStart(s[max]) {
+		max--
+	}
+	cut := s[:max]
+	if i := strings.LastIndexByte(cut, '\n'); i >= 0 {
+		return cut[:i+1]
+	}
+	return cut
+}
+
+// hasParent reports whether a raw commit object lists a parent in its header.
+func hasParent(commitObj string) bool {
+	header, _, _ := strings.Cut(commitObj, "\n\n")
+	for _, l := range strings.Split(header, "\n") {
+		if strings.HasPrefix(l, "parent ") {
+			return true
+		}
+	}
+	return false
 }

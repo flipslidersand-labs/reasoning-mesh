@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/flipslidersand-labs/reasoning-mesh/internal/validate"
 )
@@ -268,7 +269,7 @@ func TestBuildIngestPayload_GitCommit(t *testing.T) {
 }
 
 // A root commit has no parent, so the diff command fails; the error is
-// ignored and the payload has an empty diff.
+// explicitly tolerated and the payload has an empty diff.
 func TestBuildIngestPayload_GitRootCommitEmptyDiff(t *testing.T) {
 	dir := setupGitRepo(t)
 	sha := commitFile(t, dir, "a.go", "package a\n")
@@ -292,8 +293,11 @@ func TestBuildIngestPayload_GitDiffTruncatedTo32KiB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(payload.Diff) != 32*1024 {
-		t.Errorf("len(diff) = %d, want %d", len(payload.Diff), 32*1024)
+	if n := len(payload.Diff); n > 32*1024 || n < 32*1024-200 {
+		t.Errorf("len(diff) = %d, want within 200 bytes below %d", n, 32*1024)
+	}
+	if !strings.HasSuffix(payload.Diff, "\n") {
+		t.Errorf("diff should end on a line boundary")
 	}
 }
 
@@ -343,5 +347,62 @@ func TestRunIngest_TokenPrecedence(t *testing.T) {
 				t.Errorf("Authorization = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestBuildIngestPayload_GitDiffFailureReturnsError(t *testing.T) {
+	dir := setupGitRepo(t)
+	parent := commitFile(t, dir, "a.go", "package a\n")
+	commitFile(t, dir, "a.go", "package a\n\nvar X = 1\n")
+	// Remove the parent commit object so HEAD has a parent but diff fails.
+	obj := filepath.Join(dir, ".git", "objects", parent[:2], parent[2:])
+	if err := os.Chmod(filepath.Dir(obj), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(obj); err != nil {
+		t.Fatalf("remove parent object: %v", err)
+	}
+
+	_, err := buildIngestPayload("HEAD", "")
+	if err == nil || !strings.Contains(err.Error(), "git diff") {
+		t.Errorf("error = %v, want git diff error", err)
+	}
+}
+
+func TestBuildIngestPayload_GitDiffTruncationKeepsUTF8(t *testing.T) {
+	dir := setupGitRepo(t)
+	commitFile(t, dir, "a.go", "package a\n")
+	// Multi-byte (3-byte) runes so the 32KiB cut lands inside a rune.
+	big := "package a\n// " + strings.Repeat("あ", 20000) + "\n"
+	commitFile(t, dir, "a.go", big)
+
+	payload, err := buildIngestPayload("HEAD", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !utf8.ValidString(payload.Diff) {
+		t.Errorf("diff is not valid UTF-8 after truncation")
+	}
+	// The cut retreats to a line boundary; the result must stay valid UTF-8.
+	if len(payload.Diff) > 32*1024 {
+		t.Errorf("len(diff) = %d, want <= %d", len(payload.Diff), 32*1024)
+	}
+}
+
+func TestTruncateUTF8(t *testing.T) {
+	if got := truncateUTF8("あいう", 4); got != "あ" {
+		t.Errorf("got %q, want %q", got, "あ")
+	}
+	if got := truncateUTF8("ab\ncd\nef", 7); got != "ab\ncd\n" {
+		t.Errorf("line boundary: got %q", got)
+	}
+	if got := truncateUTF8("ab\ncdあいう", 9); got != "ab\n" {
+		t.Errorf("line boundary with multibyte: got %q", got)
+	}
+	if got := truncateUTF8("あいうえお", 7); got != "あい" {
+		t.Errorf("no newline: got %q, want rune boundary", got)
+	}
+	if got := truncateUTF8("abc", 10); got != "abc" {
+		t.Errorf("got %q", got)
 	}
 }
