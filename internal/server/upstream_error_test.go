@@ -25,7 +25,7 @@ func (failingAdapter) Generate(_ context.Context, _ string) (router.Response, er
 func buildFailingServer(t *testing.T) http.Handler {
 	t.Helper()
 	srv, pending := server.Build(server.Config{
-		Router: router.New(router.Config{Default: failingAdapter{}}),
+		Router: mustRouter(t, router.Config{Default: failingAdapter{}}),
 	})
 	t.Cleanup(pending.Stop)
 	return srv
