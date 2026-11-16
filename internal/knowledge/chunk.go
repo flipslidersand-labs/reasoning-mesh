@@ -23,17 +23,24 @@ func ChunkDiff(diff string) []Chunk {
 	var cur strings.Builder
 	hintType := eval.TaskDebugging
 
+	// flush emits the buffer as a chunk only if it exceeds minChunkLen.
+	flush := func() {
+		if cur.Len() > minChunkLen {
+			chunks = append(chunks, Chunk{Content: cur.String(), HintTaskType: hintType})
+		}
+	}
+
 	for _, line := range strings.Split(diff, "\n") {
 		switch {
 		case strings.HasPrefix(line, "diff --git"):
-			if cur.Len() > 0 {
-				chunks = append(chunks, Chunk{Content: cur.String(), HintTaskType: hintType})
-				cur.Reset()
-			}
+			// Small chunks are dropped, not merged into the next file.
+			flush()
+			cur.Reset()
 			hintType = inferTaskTypeFromPath(line)
 		case strings.HasPrefix(line, "@@"):
+			// Small hunks are kept in the buffer and merged with the next one.
 			if cur.Len() > minChunkLen {
-				chunks = append(chunks, Chunk{Content: cur.String(), HintTaskType: hintType})
+				flush()
 				cur.Reset()
 			}
 			cur.WriteString(line + "\n")
@@ -41,9 +48,7 @@ func ChunkDiff(diff string) []Chunk {
 			cur.WriteString(line + "\n")
 		}
 	}
-	if cur.Len() > minChunkLen {
-		chunks = append(chunks, Chunk{Content: cur.String(), HintTaskType: hintType})
-	}
+	flush()
 	return chunks
 }
 
