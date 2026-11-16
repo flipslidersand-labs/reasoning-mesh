@@ -27,7 +27,7 @@ type pendingEntry struct {
 // Clients use the request_id returned by /v1/infer to send feedback without
 // having to track knowledge_ids themselves.
 //
-// Entries are evicted lazily on Get, by the background sweep goroutine started
+// Entries are evicted lazily on Claim, by the background sweep goroutine started
 // in NewPendingStore, and by the cap enforced in Put.
 // Call Stop to release the background goroutine.
 type PendingStore struct {
@@ -154,20 +154,6 @@ func (s *PendingStore) insertLocked(id string, knowledgeIDs []string) {
 		expiresAt:    now.Add(pendingTTL),
 		insertedAt:   now,
 	}
-}
-
-// Get returns the knowledge IDs for the given request ID and removes the entry.
-// Returns nil if not found or expired.
-func (s *PendingStore) Get(requestID string) []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	e, ok := s.entries[requestID]
-	if !ok || s.clock().After(e.expiresAt) {
-		delete(s.entries, requestID)
-		return nil
-	}
-	delete(s.entries, requestID)
-	return e.knowledgeIDs
 }
 
 // Sweep removes all expired entries. The background goroutine calls this

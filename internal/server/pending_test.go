@@ -9,7 +9,18 @@ import (
 	"github.com/flipslidersand/reasoning-mesh/internal/server"
 )
 
-func TestPendingStore_PutAndGet(t *testing.T) {
+// claimCommit claims the entry and, if it was granted, commits it (removing it).
+// Returns nil when the entry is missing, expired or busy.
+func claimCommit(s *server.PendingStore, id string) []string {
+	ids, busy := s.Claim(id)
+	if busy || ids == nil {
+		return nil
+	}
+	s.Commit(id)
+	return ids
+}
+
+func TestPendingStore_PutAndClaimCommit(t *testing.T) {
 	s := server.NewPendingStore()
 	defer s.Stop()
 	ids := []string{"abc", "def"}
@@ -19,28 +30,28 @@ func TestPendingStore_PutAndGet(t *testing.T) {
 		t.Fatal("Put should return non-empty request ID")
 	}
 
-	got := s.Get(reqID)
+	got := claimCommit(s, reqID)
 	if len(got) != 2 || got[0] != "abc" || got[1] != "def" {
-		t.Errorf("Get returned %v, want %v", got, ids)
+		t.Errorf("claim returned %v, want %v", got, ids)
 	}
 }
 
-func TestPendingStore_GetConsumesEntry(t *testing.T) {
+func TestPendingStore_CommitConsumesEntry(t *testing.T) {
 	s := server.NewPendingStore()
 	defer s.Stop()
 	reqID := s.Put([]string{"x"})
 
-	_ = s.Get(reqID)
-	second := s.Get(reqID)
+	_ = claimCommit(s, reqID)
+	second := claimCommit(s, reqID)
 	if second != nil {
-		t.Error("second Get should return nil (entry consumed)")
+		t.Error("second claim should return nil (entry consumed)")
 	}
 }
 
 func TestPendingStore_UnknownID(t *testing.T) {
 	s := server.NewPendingStore()
 	defer s.Stop()
-	got := s.Get("does-not-exist")
+	got := claimCommit(s, "does-not-exist")
 	if got != nil {
 		t.Errorf("expected nil for unknown ID, got %v", got)
 	}
@@ -60,7 +71,7 @@ func TestPendingStore_EmptyKnowledgeIDs(t *testing.T) {
 	s := server.NewPendingStore()
 	defer s.Stop()
 	reqID := s.Put(nil)
-	got := s.Get(reqID)
+	got := claimCommit(s, reqID)
 	// nil stored → nil returned (no crash)
 	if got != nil {
 		t.Errorf("expected nil for empty knowledge IDs, got %v", got)
@@ -85,13 +96,13 @@ func TestPendingStore_CapEvictsOldest(t *testing.T) {
 	}
 
 	// The first inserted ID should have been evicted.
-	if got := s.Get(ids[0]); got != nil {
+	if got := claimCommit(s, ids[0]); got != nil {
 		t.Error("oldest entry should have been evicted when cap was exceeded")
 	}
 
 	// All others should still be present.
 	for _, id := range ids[1:] {
-		if got := s.Get(id); got == nil {
+		if got := claimCommit(s, id); got == nil {
 			t.Errorf("entry %s should still exist", id)
 		}
 	}
@@ -101,7 +112,7 @@ func TestPendingStore_ExpiredGet(t *testing.T) {
 	tests := []struct {
 		name   string
 		offset time.Duration // expiry relative to now
-		want   bool          // Get returns IDs
+		want   bool          // Claim returns IDs
 	}{
 		{"far future is valid", time.Hour, true},
 		{"just expired", -time.Nanosecond, false},
@@ -115,12 +126,12 @@ func TestPendingStore_ExpiredGet(t *testing.T) {
 			if !s.SetExpiry(id, time.Now().Add(tt.offset)) {
 				t.Fatal("entry not found")
 			}
-			got := s.Get(id)
+			got := claimCommit(s, id)
 			if (got != nil) != tt.want {
-				t.Errorf("Get = %v, want non-nil=%v", got, tt.want)
+				t.Errorf("Claim = %v, want non-nil=%v", got, tt.want)
 			}
 			if s.Len() != 0 {
-				t.Errorf("Len = %d, want 0 (Get removes entry even when expired)", s.Len())
+				t.Errorf("Len = %d, want 0 (claim+commit removes entry even when expired)", s.Len())
 			}
 		})
 	}
@@ -148,15 +159,15 @@ func TestPendingStore_SweepMixed(t *testing.T) {
 	if s.Len() != 3 {
 		t.Errorf("Len after sweep = %d, want 3", s.Len())
 	}
-	// Note: Get itself returns nil for expired entries, so this loop does not
+	// Note: Claim itself returns nil for expired entries, so this loop does not
 	// verify Sweep; the Len == 3 check above is what proves Sweep removed them.
 	for _, id := range expired {
-		if s.Get(id) != nil {
+		if claimCommit(s, id) != nil {
 			t.Errorf("expired %s should be nil after Sweep", id)
 		}
 	}
 	for _, id := range valid {
-		if got := s.Get(id); len(got) != 1 || got[0] != "v" {
+		if got := claimCommit(s, id); len(got) != 1 || got[0] != "v" {
 			t.Errorf("valid %s Get = %v, want [v]", id, got)
 		}
 	}
@@ -190,7 +201,7 @@ func TestPendingStore_ConcurrentAddGetSweep(t *testing.T) {
 					}
 				}
 				s.Sweep()
-				if got := s.Get(id); got != nil && i%2 == 0 {
+				if got := claimCommit(s, id); got != nil && i%2 == 0 {
 					t.Errorf("expired entry returned %v", got)
 				}
 				_, _ = s.Claim(id)
@@ -206,25 +217,25 @@ func TestPendingStore_ConcurrentAddGetSweep(t *testing.T) {
 var fixedNow = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 
 // expiresAt == now is still valid (expiry is strictly "now after expiresAt").
-func TestPendingStore_Get_ExpiresAtEqualsNow_IsValid(t *testing.T) {
+func TestPendingStore_Claim_ExpiresAtEqualsNow_IsValid(t *testing.T) {
 	s := server.NewPendingStore()
 	defer s.Stop()
 	s.SetNow(func() time.Time { return fixedNow })
 	id := s.Put([]string{"k"})
 	s.SetExpiry(id, fixedNow)
-	if got := s.Get(id); len(got) != 1 || got[0] != "k" {
-		t.Errorf("Get at expiresAt==now = %v, want [k]", got)
+	if got := claimCommit(s, id); len(got) != 1 || got[0] != "k" {
+		t.Errorf("Claim at expiresAt==now = %v, want [k]", got)
 	}
 }
 
-func TestPendingStore_Get_OneNsPastExpiry_IsExpired(t *testing.T) {
+func TestPendingStore_Claim_OneNsPastExpiry_IsExpired(t *testing.T) {
 	s := server.NewPendingStore()
 	defer s.Stop()
 	s.SetNow(func() time.Time { return fixedNow })
 	id := s.Put([]string{"k"})
 	s.SetExpiry(id, fixedNow.Add(-time.Nanosecond))
-	if got := s.Get(id); got != nil {
-		t.Errorf("Get 1ns past expiry = %v, want nil", got)
+	if got := claimCommit(s, id); got != nil {
+		t.Errorf("Claim 1ns past expiry = %v, want nil", got)
 	}
 }
 
@@ -260,12 +271,12 @@ func TestPendingStore_Put_TTLStampedFromInjectedClock(t *testing.T) {
 			s.SetNow(func() time.Time { return cur })
 			id := s.Put([]string{"k"})
 			cur = fixedNow.Add(tc.advance)
-			got := s.Get(id)
+			got := claimCommit(s, id)
 			if tc.valid && len(got) != 1 {
-				t.Errorf("Get = %v, want [k]", got)
+				t.Errorf("Claim = %v, want [k]", got)
 			}
 			if !tc.valid && got != nil {
-				t.Errorf("Get = %v, want nil", got)
+				t.Errorf("Claim = %v, want nil", got)
 			}
 		})
 	}
@@ -325,17 +336,33 @@ func TestPendingStore_Release_KeepsOriginalTTL(t *testing.T) {
 func TestPendingStore_Release_AtCapDoesNotChangeStore(t *testing.T) {
 	s := server.NewPendingStoreWithCap(3)
 	defer s.Stop()
-	ids := []string{s.Put([]string{"a"}), s.Put([]string{"b"}), s.Put([]string{"c"})}
+	cur := fixedNow
+	s.SetNow(func() time.Time { return cur })
+	ids := make([]string, 3)
+	for i, v := range []string{"a", "b", "c"} {
+		ids[i] = s.Put([]string{v})
+		cur = cur.Add(time.Minute) // distinct insertedAt and expiresAt per entry
+	}
+	// ids[0]: inserted at fixedNow, expires at fixedNow+TTL.
 	if got, _ := s.Claim(ids[0]); got == nil {
 		t.Fatal("claim failed")
 	}
+	cur = cur.Add(5 * time.Minute)
 	s.Release(ids[0])
 	if s.Len() != 3 {
 		t.Fatalf("Len = %d, want 3", s.Len())
 	}
-	for _, id := range ids {
-		if got, busy := s.Claim(id); busy || got == nil {
-			t.Errorf("entry %s lost after Release", id)
+
+	// Just past the original expiry of ids[0] (a re-stamped TTL would still be live),
+	// while ids[1] and ids[2] are still within theirs.
+	cur = fixedNow.Add(server.PendingTTL + time.Nanosecond)
+	if got, busy := s.Claim(ids[0]); got != nil || busy {
+		t.Errorf("released entry must keep original expiry, claim = %v,%v", got, busy)
+	}
+	for i, want := range map[int]string{1: "b", 2: "c"} {
+		got, busy := s.Claim(ids[i])
+		if busy || len(got) != 1 || got[0] != want {
+			t.Errorf("entry %d lost or altered after Release: %v,%v", i, got, busy)
 		}
 	}
 }
