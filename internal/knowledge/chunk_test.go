@@ -202,9 +202,9 @@ func TestChunkDiff_Boundaries(t *testing.T) {
 }
 
 // TestChunkDiff_PathInference exercises inferTaskTypeFromPath through
-// ChunkDiff. Cases marked "current spec" are false positives of the substring
-// match; they are pinned as the current spec. Whether to fix them is a
-// separate Issue (not decided here).
+// ChunkDiff. "test" matches only on a boundary (_test suffix, test_ prefix,
+// test/tests directory or file stem); "latest"/"contest" are not tests.
+// arch/design/error/fix still use substring matching (out of scope here).
 func TestChunkDiff_PathInference(t *testing.T) {
 	tests := []struct {
 		path string
@@ -212,8 +212,14 @@ func TestChunkDiff_PathInference(t *testing.T) {
 	}{
 		{"main.go", eval.TaskImplementation},
 		{"foo_test.go", eval.TaskTesting},
-		{"latest.go", eval.TaskTesting},  // current spec: "latest" contains "test"
-		{"contest.go", eval.TaskTesting}, // current spec: "contest" contains "test"
+		{"latest.go", eval.TaskImplementation},
+		{"contest.go", eval.TaskImplementation},
+		{"pkg/latest/x.go", eval.TaskImplementation},
+		{"pkg/tests/x.go", eval.TaskTesting},
+		{"pkg/test/x.go", eval.TaskTesting},
+		{"pkg/test_util.go", eval.TaskTesting},
+		{"test.py", eval.TaskTesting},
+		{"latest_fix.go", eval.TaskDebugging},
 		{"architecture.go", eval.TaskArchitecture},
 		{"fix.go", eval.TaskDebugging},
 		{"FIX.go", eval.TaskDebugging}, // case-insensitive
